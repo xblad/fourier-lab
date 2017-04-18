@@ -263,6 +263,18 @@ charFuncSV_T <- function(u_1, u_2) charFunc_T(u_1, u_2, type = modelNames$SV)
 # phi_T,gbm(u_1, u_2)
 charFuncGBM_T <- function(u_1, u_2) charFunc_T(u_1, u_2, type = modelNames$GBM)
 
+getCharFunction <- function(modelType, initConds = FALSE) {
+  # function returns characteristic function depend on selected model
+  # and whather with initial conditions (phi) or without (phi_T)
+    if (modelType == modelNames$SV) {
+        if (initConds) {charFuncSV}
+        else {charFuncSV_T}
+    } else if (modelType == modelNames$GBM) {
+        if (initConds) {charFuncGBM}
+        else {charFuncGBM_T}
+    }
+}
+
 # chi_1(v_1, v_2)
 charFuncChi1 <- function(v_1, v_2, charFunc = charFuncSV) {
   return(
@@ -455,12 +467,12 @@ getSpreadOptionPriceRange <- function(K, modelType = modelNames$SV) {
 #===============================================================#
 
 # P^hat(u)
-payoffCoreFuncComplexGamma <- function(u_1, u_2) {#, negativeStrike = FALSE) {
-  #if (!negativeStrike) {
+payoffCoreFuncComplexGamma <- function(u_1, u_2, negativeStrike = FALSE) {
+  if (!negativeStrike) {
     return( gammaz(i*(u_1+u_2)-1) * gammaz(-i*u_2) / gammaz(i*u_1+1) )
-  #} else {
-  #  return( -1 * payoffCoreFuncComplexGamma(u_2, u_1) )
-  #}
+  } else {
+   return( -1 * payoffCoreFuncComplexGamma(u_2, u_1) )
+  }
   #return(1/((1-i*u_1)*u_2*(u_1+u_2+i)))
 }
 
@@ -482,7 +494,7 @@ fourierInputHurdZhou <- function(charFunc_T = charFuncSV_T, negativeStrike = FAL
     u_1 = v_1(m)+i*alpha_2; u_2 = v_2(n)+i*alpha_1
   }
   charFuncResult = charFunc_T(u_1, u_2)
-  complexGammaPayoffCore = payoffCoreFuncComplexGamma(u_1, u_2)
+  complexGammaPayoffCore = payoffCoreFuncComplexGamma(u_1, u_2, negativeStrike)
   # NOTE: with or without zero condition??? Now without
   H = (-1)^(m+n) *
       # NOTE: in Hurd Zhou exp() function in characteristic function

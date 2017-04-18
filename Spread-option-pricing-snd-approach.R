@@ -18,15 +18,39 @@ corrs$setCorrelation(underlyings[[1]], underlyings[[2]], 0.5)
 corrs$setCorrelation(underlyings[[1]], volatility, -0.5)
 corrs$setCorrelation(underlyings[[2]], volatility, 0.25)
 
-underlying1 = underlyings[[1]]
-underlying2 = underlyings[[2]]
 
+## PARAMS SETTINGS ##
+# time to expiry
+T_t = 1.0
+# number of discretization, steps etc.
+N = 512
+# trancation error param
+u_min = 40
+# decay terms for square-intergability
+alpha_1 = -3
+alpha_2 = 1
+# interest rate and dividend rates
+r = 0.1
+# the strikes range (from, to, step)
+K = seq(-4,4,0.5)
+# model for joint characteristic function (GBM, SV etc.)
+modelType = modelNames$SV
+## END ~~ PARAMS SETTINGS ~~ END ##
+
+charFunction = getCharFunction(modelType, initConds = FALSE)
+if (modelType == modelNames$SV) {
+  underlying1 = underlyings[[1]]
+  underlying2 = underlyings[[2]]
+} else if (modelType == modelNames$GBM) {
+  underlying1 = underlyings[[3]]
+  underlying2 = underlyings[[4]]
+}
+
+## DEDICATED METHOD OF PARAMS SETUP ##
 # actual value of underlyings and SV
 S_1_0 = 100
 S_2_0 = 96
 nu_0 = 0.04
-# interest rate and dividend rates
-r = 0.1
 delta_1 = 0.05
 delta_2 = 0.05
 # volatilities of underlyings and SV
@@ -37,26 +61,9 @@ sigma_nu = 0.05
 ro = 0.5
 ro_1 = -0.5
 ro_2 = 0.25
-# time to maturity
-T_t = 1.0
 # SV params
 kappa = 1.0
 mu = 0.04
-
-# number of discretization, steps etc.
-N = 512
-# trancation error param
-u_min = 40
-lambdas = getLogPricesIncrements(K = 1, u_min)
-lambda_1 = lambdas[1]
-lambda_2 = lambdas[2]
-Delta_1 = 2*pi/N/lambda_1
-Delta_2 = 2*pi/N/lambda_2
-
-# decay terms for square-intergability
-alpha_1 = -3
-alpha_2 = 1
-
 
 # logarithmisation
 s_1_0 = log(S_1_0)
@@ -74,22 +81,17 @@ sigma_nu_covs = t(c(sigma_1nu, sigma_2nu)) # row vector
 
 
 #===============================================================#
-#               BASIC FOURIER APPROACH                          #
+#               HURD ZHOU FOURIER APPROACH                      #
 #===============================================================#
 t1 = proc.time()
-#debug(fourierInputHurdZhou)
-#debug(SprHurdZhou)
-calculate = TRUE
-modelType = modelNames$GBM
+
 # 1. calculation of input
 # 2. transformation of input
 # 3. calculate Spread option value
-if (calculate) {
 if (modelType == modelNames$SV) {
   sigma_1 = 1.0
   sigma_2 = 0.5
 
-  K = seq(-4,4,0.5)
   SpreadOptionPrice = K * NA
   for (kk in seq_along(K)) {
     if (K[kk] == 0) K[kk] = 1e-5 # small K instead zero
@@ -146,7 +148,6 @@ times = if ("times" %in% ls()) {
 times[times$N == N,"time"] = unname(t2[3] - t1[3])
 cat("\nTime elapsed:\n")
 print(times)
-}
 
 # m = n = seq_len(N)-1
 # combs = expand.grid(n = n, m = m) # all possible combinations of n and m

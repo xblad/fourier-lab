@@ -1,5 +1,35 @@
 rm(list=ls())
 source('Spread-option-pricing-functions.R')
+
+underlyings = list()
+# underlyings templates (for SV and GBM)
+underlyings[[1]] <- create.underlyingAsset(S_0 = 100, sigma = 1.0, delta = 0.05)
+underlyings[[2]] <- create.underlyingAsset(S_0 = 96, sigma = 0.5, delta = 0.05)
+underlyings[[3]] = underlyings[[1]]; underlyings[[3]]$setSigma(0.2)
+underlyings[[4]] = underlyings[[2]]; underlyings[[4]]$setSigma(0.1)
+
+
+volatility <- create.stochasticVolatility(nu_0 = 0.04, sigma = 0.05,
+                                          kappa = 1.0, mu = 0.04)
+
+corrs <- create.correlations()
+corrs$setCorrelation(underlyings[[1]], underlyings[[2]], 0.5)
+corrs$setCorrelation(underlyings[[1]], volatility, -0.5)
+corrs$setCorrelation(underlyings[[2]], volatility, 0.25)
+
+# NOTE: same templates, but reversed order
+
+# params settings
+modelType = modelNames$GBM
+
+if (modelType == modelNames$SV) {
+  underlying1 = underlyings[[2]]
+  underlying2 = underlyings[[1]]
+} else if (modelType == modelNames$GBM) {
+  underlying1 = underlyings[[4]]
+  underlying2 = underlyings[[3]]
+}
+
 ## test params
 # actual value of underlyings and SV
 S_1_0 = 96
