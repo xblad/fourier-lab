@@ -1,0 +1,190 @@
+rm(list=ls())
+source('Spread-option-pricing-functions.R')
+## test params
+# actual value of underlyings and SV
+S_1_0 = 96
+S_2_0 = 100
+nu_0 = 0.04
+# interest rate and dividend rates
+r = 0.1
+delta_1 = 0.05
+delta_2 = 0.05
+# volatilities of underlyings and SV
+sigma_1 = 0.5
+sigma_2 = 1.0
+sigma_nu = 0.05
+# correlations
+ro = 0.5
+ro_1 = 0.25
+ro_2 = -0.5
+# time to maturity
+T_t = 1.0
+# last strike
+K_last = S_2_0 - S_1_0
+# SV params
+kappa = 1.0
+mu = 0.04
+
+# number of discretization, steps etc.
+N = 512
+# trancation error param
+u_min = 158
+lambdas = getLogPricesIncrements(K = 1, u_min)
+lambda_1 = lambdas[1]
+lambda_2 = lambdas[2]
+Delta_1 = 2*pi/N/lambda_1
+Delta_2 = 2*pi/N/lambda_2
+
+# decay terms for square-intergability
+alpha_1 = -3
+alpha_2 = 1
+
+##---COMMENT---##
+#**LOOKS "GOOD" for GBM
+# lambda_1 = 5.375/N
+#
+#**LOOKS "GOOD" for SV
+# lambda_1 = 10/N
+#
+#**LOOKS "GOOD" for both
+# lambda_2 = lambda_1
+# alpha_1 = -1
+# alpha_2 = 1
+#
+##-END COMMENT-##
+
+# upper bound params epsilon
+epsilon = 1e-1
+
+# logarithmisation
+s_1_0 = log(S_1_0)
+s_2_0 = log(S_2_0)
+
+# helper variables
+sigma_12 = sigma_21 = sigma_1*sigma_2*ro
+sigma_1nu = sigma_nu1 = sigma_1*sigma_nu*ro_1
+sigma_2nu = sigma_nu2 = sigma_2*sigma_nu*ro_2
+S_cov = matrix(
+  c(sigma_1^2, sigma_12,
+    sigma_21, sigma_2^2), nrow = 2)
+
+sigma_nu_covs = t(c(sigma_1nu, sigma_2nu)) # row vector
+
+
+#===============================================================#
+#               BASIC FOURIER APPROACH                          #
+#===============================================================#
+
+t1 = proc.time()
+modelType = modelNames$SV
+inverse = F
+# 1. chi(m, n) for chi_1(v_1, v_2) and chi_2(v_1, v_2), phi_sv(u_1, u_2)/phi_gbm(u_1, u_2) case
+# 2. transformation of input
+# 3. calculate Pi components
+if (modelType == modelNames$SV) {
+  sigma_1 = 0.5
+  sigma_2 = 1.0
+  cat("Preparation of input for Fourier transform ...\n")
+  fourierInputXChi1SV = fourierInputX(charFuncChi1, charFuncSV)
+  fourierInputXChi2SV = fourierInputX(charFuncChi2, charFuncSV)
+
+  cat("Calculation of Fourier transform output ...\n")
+  fourierOutputDempsterHongChi1SV = fftw_c2c_2d(fourierInputXChi1SV,inverse = inverse)
+  fourierOutputDempsterHongChi2SV = fftw_c2c_2d(fourierInputXChi2SV,inverse = inverse)
+
+  cat("Calculation of Pi components ...\n")
+  componentPi1.Under.SV = componentPi1.Under(modelType = modelType)
+  componentPi2.Under.SV = componentPi2.Under(modelType = modelType)
+  componentPi1.Over.SV = componentPi1.Over(modelType = modelType)
+  componentPi2.Over.SV = componentPi2.Over(modelType = modelType)
+
+  K = seq(2,4,0.2)
+} else if (modelType == modelNames$GBM) {
+  sigma_1 = 0.1
+  sigma_2 = 0.2
+  cat("Preparation of input for Fourier transform ...\n")
+  fourierInputXChi1GBM = fourierInputX(charFuncChi1, charFuncGBM)
+  fourierInputXChi2GBM = fourierInputX(charFuncChi2, charFuncGBM)
+
+  cat("Calculation of Fourier transform output ...\n")
+  fourierOutputDempsterHongChi1GBM = fftw_c2c_2d(fourierInputXChi1GBM,inverse = inverse)
+  fourierOutputDempsterHongChi2GBM = fftw_c2c_2d(fourierInputXChi2GBM,inverse = inverse)
+
+  cat("Calculation of Pi components ...\n")
+  componentPi1.Under.GBM = componentPi1.Under(modelType = modelType)
+  componentPi2.Under.GBM = componentPi2.Under(modelType = modelType)
+  componentPi1.Over.GBM = componentPi1.Over(modelType = modelType)
+  componentPi2.Over.GBM = componentPi2.Over(modelType = modelType)
+
+  K = seq(0,4,0.4)
+} else {
+  stop("Undefined modelType")
+}
+
+spreadsFFT <- getSpreadOptionPriceRange(K = K, modelType = modelType)
+# for (kk in seq_along(K)) {
+#   cat(sprintf("Option value for K = %.1f:\n",K[kk]))
+#   cat(sprintf("\t%s bound: %.4f\n", c("Lower","Upper"), spreadsFFT[kk,]))
+#   cat(sprintf("Upper - lower bound: %.4f\n", spreadsFFT[kk,2]-spreadsFFT[kk,1]))
+# }
+print(spreadsFFT)
+
+t2 = proc.time()
+
+# results (time consumtion)
+times = if ("times" %in% ls()) {
+  times
+} else {
+  data.frame(N = 2^(9:12), time = 0)
+}
+times[times$N == N,"time"] = unname(t2[3] - t1[3])
+cat("\nTime elapsed:\n")
+print(times)
+cat("\n\n")
+
+#stop("no MC")
+#===============================================================#
+#               MONTE CARLO SIMULATION                          #
+#===============================================================#
+t1 = proc.time()
+n_sim = 10^3
+sim_timesteps = 2000
+#GBM other sigmas
+#sigma_1 = 0.1
+#sigma_2 = 0.2
+sigma_12 = sigma_21 = sigma_1*sigma_2*ro
+sigma_1nu = sigma_nu1 = sigma_1*sigma_nu*ro_1
+sigma_2nu = sigma_nu2 = sigma_2*sigma_nu*ro_2
+
+# W_cov = matrix(
+#   c(sigma_1^2, sigma_12, sigma_1nu,
+#     sigma_21, sigma_2^2, sigma_2nu,
+#     sigma_nu1, sigma_nu2, sigma_nu^2),
+#     nrow = 3
+# )
+model = modelNames$GBM
+if (model == modelNames$GBM) {
+  sigma_1 = 0.1
+  sigma_2 = 0.2
+  mc_sprds <- monteCarloGBM()
+} else if (model == modelNames$SV) {
+  sigma_1 = 0.5
+  sigma_2 = 1
+  mc_sprds <- monteCarloSV()
+} else {
+  stop("Unknown model!")
+}
+K = seq(-4,4,0.5)
+cat("\nCalls:\n")
+for (kk in seq_along(K)){
+  mc_calls = pmax(mc_sprds-K[kk],0)
+  cat(sprintf("K = %.1f: %.6f\n",K[kk],mean(exp(-r*T_t)*mc_calls)))
+}
+cat("\nPuts:\n")
+for (kk in seq_along(K)){
+  mc_puts = pmax(K[kk]-mc_sprds,0)
+  cat(sprintf("K = %.1f: %.6f\n",K[kk],mean(exp(-r*T_t)*mc_puts)))
+}
+t2 = proc.time()
+cat("\nTime elapsed:\n")
+cat(unname(t2[3] - t1[3]))
