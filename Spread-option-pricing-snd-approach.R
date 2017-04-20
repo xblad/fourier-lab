@@ -6,8 +6,12 @@ underlyings = list()
 # underlyings templates (for SV and GBM)
 underlyings[[1]] <- create.underlyingAsset(S_0 = 100, sigma = 1.0, delta = 0.05)
 underlyings[[2]] <- create.underlyingAsset(S_0 = 96, sigma = 0.5, delta = 0.05)
-underlyings[[3]] = underlyings[[1]]; underlyings[[3]]$setSigma(0.2)
-underlyings[[4]] = underlyings[[2]]; underlyings[[4]]$setSigma(0.1)
+underlyings[[3]] <- create.underlyingAsset();
+underlyings[[3]]$copyFromUnderlyingAsset(underlyings[[1]]);
+underlyings[[3]]$setSigma(0.2);
+underlyings[[4]] <- create.underlyingAsset();
+underlyings[[4]]$copyFromUnderlyingAsset(underlyings[[2]]);
+underlyings[[4]]$setSigma(0.1);
 
 
 volatility <- create.stochasticVolatility(nu_0 = 0.04, sigma = 0.05,
@@ -32,9 +36,9 @@ alpha_2 = 1
 # interest rate and dividend rates
 r = 0.1
 # the strikes range (from, to, step)
-K = seq(-4,4,0.5)
+K = seq(0.5,4,0.5)
 # model for joint characteristic function (GBM, SV etc.)
-modelType = modelNames$SV
+modelType = modelNames$GBM
 ## END ~~ PARAMS SETTINGS ~~ END ##
 
 charFunction = getCharFunction(modelType, initConds = FALSE)
@@ -48,36 +52,36 @@ if (modelType == modelNames$SV) {
 
 ## DEDICATED METHOD OF PARAMS SETUP ##
 # actual value of underlyings and SV
-S_1_0 = 100
-S_2_0 = 96
-nu_0 = 0.04
-delta_1 = 0.05
-delta_2 = 0.05
+# S_1_0 = 100
+# S_2_0 = 96
+# nu_0 = 0.04
+# delta_1 = 0.05
+# delta_2 = 0.05
 # volatilities of underlyings and SV
-sigma_1 = 1.0
-sigma_2 = 0.5
-sigma_nu = 0.05
+# sigma_1 = 1.0
+# sigma_2 = 0.5
+# sigma_nu = 0.05
 # correlations
-ro = 0.5
-ro_1 = -0.5
-ro_2 = 0.25
+# ro = 0.5
+# ro_1 = -0.5
+# ro_2 = 0.25
 # SV params
-kappa = 1.0
-mu = 0.04
+# kappa = 1.0
+# mu = 0.04
 
 # logarithmisation
-s_1_0 = log(S_1_0)
-s_2_0 = log(S_2_0)
+# s_1_0 = log(S_1_0)
+# s_2_0 = log(S_2_0)
 
 # helper variables
-sigma_12 = sigma_21 = sigma_1*sigma_2*ro
-sigma_1nu = sigma_nu1 = sigma_1*sigma_nu*ro_1
-sigma_2nu = sigma_nu2 = sigma_2*sigma_nu*ro_2
-S_cov = matrix(
-  c(sigma_1^2, sigma_12,
-    sigma_21, sigma_2^2), nrow = 2)
-
-sigma_nu_covs = t(c(sigma_1nu, sigma_2nu)) # row vector
+# sigma_12 = sigma_21 = sigma_1*sigma_2*ro
+# sigma_1nu = sigma_nu1 = sigma_1*sigma_nu*ro_1
+# sigma_2nu = sigma_nu2 = sigma_2*sigma_nu*ro_2
+# S_cov = matrix(
+#   c(sigma_1^2, sigma_12,
+#     sigma_21, sigma_2^2), nrow = 2)
+#
+# sigma_nu_covs = t(c(sigma_1nu, sigma_2nu)) # row vector
 
 
 #===============================================================#
@@ -89,46 +93,56 @@ t1 = proc.time()
 # 2. transformation of input
 # 3. calculate Spread option value
 if (modelType == modelNames$SV) {
-  sigma_1 = 1.0
-  sigma_2 = 0.5
+  #sigma_1 = 1.0
+  #sigma_2 = 0.5
 
   SpreadOptionPrice = K * NA
   for (kk in seq_along(K)) {
     if (K[kk] == 0) K[kk] = 1e-5 # small K instead zero
 
-    setLambdasAndDeltas(K = abs(K[kk]), u_min)
+    setLambdasAndDeltas(K = abs(K[kk]), u_minimum = u_min,
+      underlying1 = underlying1, underlying2 = underlying2)
     if (K[kk] > 0) {
       fourierInputHurdZhouSV = fourierInputHurdZhou(charFunc_T = charFuncSV_T,
-                                                    negativeStrike = FALSE)
+        negativeStrike = FALSE, underlying1 = underlying1,
+        underlying2 = underlying2, corrs = corrs,
+        volatility = volatility, r = r, T_t = T_t)
 
       fourierOutputHurdZhouSV = fftw_c2c_2d(fourierInputHurdZhouSV,inverse = T)
     } else if (K[kk] < 0) {
       fourierInputHurdZhouSV.negStrike = fourierInputHurdZhou(charFunc_T = charFuncSV_T,
-                                                              negativeStrike = TRUE)
+        negativeStrike = TRUE, underlying1 = underlying1,
+        underlying2 = underlying2, corrs = corrs,
+        volatility = volatility, r = r, T_t = T_t)
       fourierOutputHurdZhouSV.negStrike = fftw_c2c_2d(fourierInputHurdZhouSV.negStrike,inverse = T)
     }
 
     SpreadOptionPrice[kk] = abs(K[kk]) *
-      abs(SprHurdZhou(K = K[kk], modelType = modelType))
+      abs(SprHurdZhou(K = K[kk], modelType = modelType,
+        underlying1 = underlying1, underlying2 = underlying2))
   }
     cat(sprintf("\n%.2f: %.4f",K, SpreadOptionPrice))
     cat("\n")
 
 } else if (modelType == modelNames$GBM) {
-  sigma_1 = 0.2
-  sigma_2 = 0.1
+  #sigma_1 = 0.2
+  #sigma_2 = 0.1
 
   K = seq(0.5,4,0.5)
   SpreadOptionPrice = K * NA
   for (kk in seq_along(K)) {
-    setLambdasAndDeltas(K = K[kk], u_min)
+    setLambdasAndDeltas(K = K[kk], u_minimum = u_min,
+      underlying1 = underlying1, underlying2 = underlying2)
 
-    fourierInputHurdZhouGBM = fourierInputHurdZhou(charFunc_T = charFuncGBM_T)
+    fourierInputHurdZhouGBM = fourierInputHurdZhou(charFunc_T = charFuncGBM_T,
+      underlying1 = underlying1, underlying2 = underlying2, corrs = corrs,
+      r = r, T_t = T_t)
 
     fourierOutputHurdZhouGBM = fftw_c2c_2d(fourierInputHurdZhouGBM,inverse = T)
 
     SpreadOptionPrice[kk] = K[kk] *
-      abs(SprHurdZhou(K = K[kk], modelType = modelType))
+      abs(SprHurdZhou(K = K[kk], modelType = modelType,
+        underlying1 = underlying1, underlying2 = underlying2))
   }
   cat(sprintf("\n%.2f: %.4f",K, SpreadOptionPrice))
   cat("\n")
