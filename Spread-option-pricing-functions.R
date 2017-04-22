@@ -1,4 +1,5 @@
 library(fftwtools)
+library(magrittr)
 library(pracma)
 library(digest)
 library(dplyr)
@@ -567,27 +568,8 @@ fourierInputHurdZhou <- function(charFunc_T = charFuncSV_T, negativeStrike = FAL
   return(H)
 }
 
-# HurdZhou inverse fourier transform output (must be calculated)
-fourierOutputHurdZhouSelect <- function(modelType = modelNames$SV, K = 1) {
-  if (K > 0) {
-    if (modelType == modelNames$SV) {
-      fourierOutputHurdZhou = fourierOutputHurdZhouSV
-    } else if (modelType == modelNames$GBM) {
-      fourierOutputHurdZhou = fourierOutputHurdZhouGBM
-    }
-  } else if (K < 0) {
-    if (modelType == modelNames$SV) {
-      fourierOutputHurdZhou = fourierOutputHurdZhouSV.negStrike
-    } else if (modelType == modelNames$GBM) {
-      fourierOutputHurdZhou = fourierOutputHurdZhouGBM.negStrike
-    }
-  }
-
-  return(fourierOutputHurdZhou)
-}
-
 # Spr (spread value) function from HurdZhou paper
-SprHurdZhou <- function(K, modelType = modelNames$SV,
+SprHurdZhou <- function(K, fourierOutputHurdZhou, modelType = modelNames$SV,
   underlying1 = underlying1, underlying2 = underlying2) {
 
   if (K == 0) K = 1e-5 # small K instead zero
@@ -603,10 +585,63 @@ SprHurdZhou <- function(K, modelType = modelNames$SV,
     (-1)^(p + q) * exp(-r*T_t) *
     (Delta_1 * Delta_2)/(2*pi)^2 * # Delta_x*N/(2*pi) = 1/lambda_x
     exp(-alpha_1*k_1 -alpha_2*k_2) *
-    fourierOutputHurdZhouSelect(modelType, K)[p+1,q+1]
+    fourierOutputHurdZhou[p+1,q+1]
   )
 }
 
+getSpreadOptionPricesHurdZhou <- function(K, r, T_t) {
+  SpreadOptionPrices = matrix(rep(K,2) * NA,ncol = 2, dimnames=list(K,c("Call","Put")))
+  for (kk in seq_along(K)) {
+    if (K[kk] == 0) K[kk] = 1e-5 # small K instead of zero
+
+    if (K[kk] > 0) {
+      Strike = K[kk]
+      underlyingX = underlying1
+      underlyingY = underlying2
+    } else if (K[kk] < 0) {
+      # switch underlying assets
+      Strike = -1*K[kk]
+      underlyingX = underlying1.negStrike
+      underlyingY = underlying2.negStrike
+    }
+
+    undX = underlyingX$getParams()
+    undY = underlyingY$getParams()
+    S_1_0 = undX$S_0; delta_1 = undX$delta
+    S_2_0 = undY$S_0; delta_2 = undY$delta
+
+    CallPutParityDiff = Strike*exp(-r*T_t) -
+                        ( S_1_0*exp(-delta_1*T_t) - S_2_0*exp(-delta_2*T_t) )
+
+    setLambdasAndDeltas(K = Strike, u_minimum = u_min,
+      underlying1 = underlyingX, underlying2 = underlyingY)
+    fourierInput = fourierInputHurdZhou(charFunc_T = charFunction,
+      underlying1 = underlyingX, underlying2 = underlyingY, corrs = corrs,
+      volatility = volatility, r = r, T_t = T_t)
+
+    fourierOutput = fftw_c2c_2d(fourierInput,inverse = T)
+
+    SpreadOptionPrices[kk,1] = Strike *
+      abs(SprHurdZhou(K = Strike, fourierOutputHurdZhou = fourierOutput,
+        modelType = modelType, underlying1 = underlyingX, underlying2 = underlyingY))
+
+    if (K[kk] < 0)
+      SpreadOptionPrices[kk,1] = SpreadOptionPrices[kk,1] + CallPutParityDiff
+
+    }
+    # Puts calculated using Call-put parity
+    und1 = underlying1$getParams()
+    und2 = underlying2$getParams()
+    S_1_0 = und1$S_0; delta_1 = und1$delta
+    S_2_0 = und2$S_0; delta_2 = und2$delta
+
+    CallPutParityDiff = K*exp(-r*T_t) -
+                        ( S_1_0*exp(-delta_1*T_t) - S_2_0*exp(-delta_2*T_t) )
+
+    SpreadOptionPrices[,2] = SpreadOptionPrices[,1] + CallPutParityDiff
+
+    return(SpreadOptionPrices)
+}
 # Spr2 (spread value) function from HurdZhou paper (test for interpolation)
 SprHurdZhou2 <- function(p, q, modelType = modelNames$SV) {
 

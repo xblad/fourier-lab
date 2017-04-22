@@ -37,17 +37,17 @@ r = 0.1
 # upper bound params epsilon
 epsilon = 1e-1
 # the strikes range (from, to, step)
-K = seq(0.5,4,0.5)
+K = seq(-40,40,1)
 # model for joint characteristic function (GBM, SV etc.)
 modelType = modelNames$SV
 # Monte carlo params
-n_sim = 10^2
+n_sim = 10^3
 sim_timesteps = 2000
 ## END ~~ PARAMS SETTINGS ~~ END ##
 
 # params settings
-runFastFourier = TRUE
-runMonteCarlo = FALSE
+runFastFourier = F
+runMonteCarlo = T
 
 # NOTE: same templates, but reversed order
 if (modelType == modelNames$SV) {

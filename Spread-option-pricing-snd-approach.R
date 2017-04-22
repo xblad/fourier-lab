@@ -1,4 +1,4 @@
-rm(list=ls())
+rm(list=ls()[!ls() %in% "times"])
 source('Spread-option-pricing-functions.R')
 ## test params
 # NOTE: params are flipped in comparision with DEMPSTER HONG
@@ -27,156 +27,55 @@ corrs$setCorrelation(underlyings[[2]], volatility, 0.25)
 # time to expiry
 T_t = 1.0
 # number of discretization, steps etc.
-N = 512
+N = 256
 # trancation error param
-u_min = 40
+u_min = 20
 # decay terms for square-intergability
 alpha_1 = -3
 alpha_2 = 1
-# interest rate and dividend rates
+# interest rate
 r = 0.1
 # the strikes range (from, to, step)
-K = seq(0.5,4,0.5)
+K = seq(-40,40,1)
 # model for joint characteristic function (GBM, SV etc.)
-modelType = modelNames$GBM
+modelType = modelNames$SV
 ## END ~~ PARAMS SETTINGS ~~ END ##
-
-charFunction = getCharFunction(modelType, initConds = FALSE)
-if (modelType == modelNames$SV) {
-  underlying1 = underlyings[[1]]
-  underlying2 = underlyings[[2]]
-} else if (modelType == modelNames$GBM) {
-  underlying1 = underlyings[[3]]
-  underlying2 = underlyings[[4]]
-}
-
-## DEDICATED METHOD OF PARAMS SETUP ##
-# actual value of underlyings and SV
-# S_1_0 = 100
-# S_2_0 = 96
-# nu_0 = 0.04
-# delta_1 = 0.05
-# delta_2 = 0.05
-# volatilities of underlyings and SV
-# sigma_1 = 1.0
-# sigma_2 = 0.5
-# sigma_nu = 0.05
-# correlations
-# ro = 0.5
-# ro_1 = -0.5
-# ro_2 = 0.25
-# SV params
-# kappa = 1.0
-# mu = 0.04
-
-# logarithmisation
-# s_1_0 = log(S_1_0)
-# s_2_0 = log(S_2_0)
-
-# helper variables
-# sigma_12 = sigma_21 = sigma_1*sigma_2*ro
-# sigma_1nu = sigma_nu1 = sigma_1*sigma_nu*ro_1
-# sigma_2nu = sigma_nu2 = sigma_2*sigma_nu*ro_2
-# S_cov = matrix(
-#   c(sigma_1^2, sigma_12,
-#     sigma_21, sigma_2^2), nrow = 2)
-#
-# sigma_nu_covs = t(c(sigma_1nu, sigma_2nu)) # row vector
-
 
 #===============================================================#
 #               HURD ZHOU FOURIER APPROACH                      #
 #===============================================================#
-t1 = proc.time()
-
-# 1. calculation of input
-# 2. transformation of input
-# 3. calculate Spread option value
+charFunction = getCharFunction(modelType, initConds = FALSE)
 if (modelType == modelNames$SV) {
-  #sigma_1 = 1.0
-  #sigma_2 = 0.5
-
-  SpreadOptionPrice = K * NA
-  for (kk in seq_along(K)) {
-    if (K[kk] == 0) K[kk] = 1e-5 # small K instead zero
-
-    setLambdasAndDeltas(K = abs(K[kk]), u_minimum = u_min,
-      underlying1 = underlying1, underlying2 = underlying2)
-    if (K[kk] > 0) {
-      fourierInputHurdZhouSV = fourierInputHurdZhou(charFunc_T = charFuncSV_T,
-        negativeStrike = FALSE, underlying1 = underlying1,
-        underlying2 = underlying2, corrs = corrs,
-        volatility = volatility, r = r, T_t = T_t)
-
-      fourierOutputHurdZhouSV = fftw_c2c_2d(fourierInputHurdZhouSV,inverse = T)
-    } else if (K[kk] < 0) {
-      fourierInputHurdZhouSV.negStrike = fourierInputHurdZhou(charFunc_T = charFuncSV_T,
-        negativeStrike = TRUE, underlying1 = underlying1,
-        underlying2 = underlying2, corrs = corrs,
-        volatility = volatility, r = r, T_t = T_t)
-      fourierOutputHurdZhouSV.negStrike = fftw_c2c_2d(fourierInputHurdZhouSV.negStrike,inverse = T)
-    }
-
-    SpreadOptionPrice[kk] = abs(K[kk]) *
-      abs(SprHurdZhou(K = K[kk], modelType = modelType,
-        underlying1 = underlying1, underlying2 = underlying2))
-  }
-    cat(sprintf("\n%.2f: %.4f",K, SpreadOptionPrice))
-    cat("\n")
-
+  underlying1 = underlyings[[1]]
+  underlying2 = underlyings[[2]]
+  underlying1.negStrike = underlyings[[2]]
+  underlying2.negStrike = underlyings[[1]]
 } else if (modelType == modelNames$GBM) {
-  #sigma_1 = 0.2
-  #sigma_2 = 0.1
-
-  K = seq(0.5,4,0.5)
-  SpreadOptionPrice = K * NA
-  for (kk in seq_along(K)) {
-    setLambdasAndDeltas(K = K[kk], u_minimum = u_min,
-      underlying1 = underlying1, underlying2 = underlying2)
-
-    fourierInputHurdZhouGBM = fourierInputHurdZhou(charFunc_T = charFuncGBM_T,
-      underlying1 = underlying1, underlying2 = underlying2, corrs = corrs,
-      r = r, T_t = T_t)
-
-    fourierOutputHurdZhouGBM = fftw_c2c_2d(fourierInputHurdZhouGBM,inverse = T)
-
-    SpreadOptionPrice[kk] = K[kk] *
-      abs(SprHurdZhou(K = K[kk], modelType = modelType,
-        underlying1 = underlying1, underlying2 = underlying2))
-  }
-  cat(sprintf("\n%.2f: %.4f",K, SpreadOptionPrice))
-  cat("\n")
-
-} else {
-  stop("Undefined modelType")
+  underlying1 = underlyings[[3]]
+  underlying2 = underlyings[[4]]
+  underlying1.negStrike = underlyings[[4]]
+  underlying2.negStrike = underlyings[[3]]
 }
 
+t1 = proc.time()
+
+SpreadOptionPrices = getSpreadOptionPricesHurdZhou(K = K, r = r, T_t = T_t)
+
 t2 = proc.time()
+
+print(SpreadOptionPrices)
+#cat(sprintf("\n%.2f: %.4f",K, SpreadOptionPrices))
+cat("\n")
+
+matplot(SpreadOptionPrices,type=c("l"),pch=1,x = K,ylab = "Spread option value")
+legend("top",legend = c("Call","Put"), col = 1:2, pch=1)
 
 # results (time consumtion)
 times = if ("times" %in% ls()) {
   times
 } else {
-  data.frame(N = 2^(9:12), time = 0)
+  data.frame(N = 2^(3:12), time = 0)
 }
 times[times$N == N,"time"] = unname(t2[3] - t1[3])
 cat("\nTime elapsed:\n")
 print(times)
-
-# m = n = seq_len(N)-1
-# combs = expand.grid(n = n, m = m) # all possible combinations of n and m
-# m = combs$m; n = combs$n
-# u_1 = v_1(m)+i*alpha_1
-# u_2 = v_2(n)+i*alpha_2
-#
-# t11 = proc.time()
-# charFuncResult = charFunc_T(u_1, u_2)
-# t12 = proc.time()
-#
-# print(unname(t12[3] - t11[3]))
-#
-# t11 = proc.time()
-# complexGammaPayoffCore = gammaz(i*(u_1+u_2)-1)
-# t12 = proc.time()
-#
-# print(unname(t12[3] - t11[3]))
