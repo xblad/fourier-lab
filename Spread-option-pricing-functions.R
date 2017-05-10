@@ -186,11 +186,11 @@ charFunc_T <- function(u_1, u_2, type = modelNames$SV, underlying1, underlying2,
   sigma_2 = und2$sigma
   delta_2 = und2$delta
 
-  ro = corrs$getCorrelation(underlying1, underlying2)
+  rho = corrs$getCorrelation(underlying1, underlying2)
 
   # zeta definition
   zeta = -1/2 * (
-    (sigma_1^2*u_1^2 + sigma_2^2*u_2^2 + 2*ro*sigma_1*sigma_2*u_1*u_2) +
+    (sigma_1^2*u_1^2 + sigma_2^2*u_2^2 + 2*rho*sigma_1*sigma_2*u_1*u_2) +
     i*(sigma_1^2*u_1 + sigma_2^2*u_2)
   );
   if (type == modelNames$GBM) {
@@ -209,11 +209,11 @@ charFunc_T <- function(u_1, u_2, type = modelNames$SV, underlying1, underlying2,
     kappa = vol$kappa
     mu = vol$mu
 
-    ro_1 = corrs$getCorrelation(underlying1, volatility)
-    ro_2 = corrs$getCorrelation(underlying2, volatility)
+    rho_1 = corrs$getCorrelation(underlying1, volatility)
+    rho_2 = corrs$getCorrelation(underlying2, volatility)
 
     # gamma definition
-    gamma = kappa - i*(ro_1*sigma_1*u_1 + ro_2*sigma_2*u_2)*sigma_nu;
+    gamma = kappa - i*(rho_1*sigma_1*u_1 + rho_2*sigma_2*u_2)*sigma_nu;
     # theta definition
     theta = sqrt(gamma^2 - 2*sigma_nu^2*zeta);
 
@@ -581,12 +581,12 @@ SprHurdZhou <- function(K, fourierOutputHurdZhou, modelType = modelNames$SV,
     stop("p or q in Spr function is out of bound!")
   }
 
-  return(
+  return(K * abs(
     (-1)^(p + q) * exp(-r*T_t) *
     (Delta_1 * Delta_2)/(2*pi)^2 * # Delta_x*N/(2*pi) = 1/lambda_x
     exp(-alpha_1*k_1 -alpha_2*k_2) *
     fourierOutputHurdZhou[p+1,q+1]
-  )
+  ))
 }
 
 getSpreadOptionPricesHurdZhou <- function(K, r, T_t) {
@@ -621,9 +621,9 @@ getSpreadOptionPricesHurdZhou <- function(K, r, T_t) {
 
     fourierOutput = fftw_c2c_2d(fourierInput,inverse = T)
 
-    SpreadOptionPrices[kk,1] = Strike *
-      abs(SprHurdZhou(K = Strike, fourierOutputHurdZhou = fourierOutput,
-        modelType = modelType, underlying1 = underlyingX, underlying2 = underlyingY))
+    SpreadOptionPrices[kk,1] = SprHurdZhou(K = Strike,
+      fourierOutputHurdZhou = fourierOutput, modelType = modelType,
+      underlying1 = underlyingX, underlying2 = underlyingY)
 
     if (K[kk] < 0)
       SpreadOptionPrices[kk,1] = SpreadOptionPrices[kk,1] + CallPutParityDiff
@@ -651,12 +651,12 @@ SprHurdZhou2 <- function(p, q, modelType = modelNames$SV) {
   k_1 = k_1(p=p)
   k_2 = k_2(q=q)
 
-  return(
+  return(abs(
     (-1)^(p + q) * exp(-r*T_t) *
     (Delta_1 * Delta_2)/(2*pi)^2 * # Delta_x*N/(2*pi) = 1/lambda_x
     exp(-alpha_1*k_1 -alpha_2*k_2) *
     fourierOutputHurdZhouSelect(modelType)[p+1,q+1]
-  )
+  ))
 }
 
 #===============================================================#
@@ -668,10 +668,6 @@ monteCarloSV <- function(underlying1, underlying2, volatility, corrs, r, T_t) {
   tsteps = seq_len(sim_timesteps)
   lsims = seq_len(n_sim)
 
-  # W_cor = matrix(
-  #   c(1,    ro,   ro_1,
-  #     ro,   1,    ro_2,
-  #     ro_1, ro_2,   1), nrow = 3)
   und1 = underlying1$getParams()
   s_1_0 = log(und1$S_0)
   sigma_1 = und1$sigma
@@ -730,10 +726,6 @@ monteCarloGBM <- function(underlying1, underlying2, corrs, r, T_t) {
 
   W_cor = matrix(unlist(corrs$getCorrelationMatrix()[1:2,1:2]), nrow = 2)
 
-  # W_cor = matrix(
-  #   c(1,   ro,
-  #     ro,   1), nrow = 2)
-
   sims = list()
   sprds = lsims*NA
   for (ss in 2*lsims-1) {
@@ -771,10 +763,6 @@ monteCarloGBM2 <- function(underlying1, underlying2, corrs, r, T_t) {
   delta_2 = und2$delta
 
   W_cor = matrix(unlist(corrs$getCorrelationMatrix()[1:2,1:2]), nrow = 2)
-
-  # W_cor = matrix(
-  #   c(1,   ro,
-  #     ro,   1), nrow = 2)
 
   sims = list()
   sprds = lsims*NA
