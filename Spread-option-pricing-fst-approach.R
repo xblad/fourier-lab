@@ -41,8 +41,8 @@ K = seq(-40,40,1)
 # model for joint characteristic function (GBM, SV etc.)
 modelType = modelNames$SV
 # Monte carlo params
-n_sim = 10^3
-sim_timesteps = 2000
+n_sim = 10^2
+sim_timesteps = 2000 # irrelevant in case of MonteCarloGBM3 or MonteCarloGBM4 
 ## END ~~ PARAMS SETTINGS ~~ END ##
 
 # params settings
@@ -130,24 +130,32 @@ if (runMonteCarlo) {
 t1 = proc.time()
 
 if (modelType == modelNames$GBM) {
-  mc_sprds <- monteCarloGBM(underlying1 = underlying1, underlying2 = underlying2,
-    corrs = corrs, r = r, T_t = T_t)
+  mc_sprds <- monteCarloGBM4(underlying1 = underlying1, underlying2 = underlying2,
+    corrs = corrs, r = r, T_t = T_t)#,sim_timesteps = sim_timesteps)
 } else if (modelType == modelNames$SV) {
   mc_sprds <- monteCarloSV(underlying1 = underlying1, underlying2 = underlying2,
     corrs = corrs, volatility = volatility, r = r, T_t = T_t)
 } else {
   stop("Unknown modelType!")
 }
+
 cat("\nCalls:\n")
+mc_calls = seq_along(K)*NA; names(mc_calls) <- K
 for (kk in seq_along(K)){
-  mc_calls = pmax(mc_sprds-K[kk],0)
-  cat(sprintf("K = %.1f: %.6f\n",K[kk],mean(exp(-r*T_t)*mc_calls)))
+  progress(kk,length(K))
+  call_payoffs = pmax(mc_sprds-K[kk],0)
+  mc_calls[paste(K[kk])] = mean(exp(-r*T_t)*call_payoffs)
 }
+cat(sprintf("K = %.1f: %.6f\n",K,mc_calls))
 cat("\nPuts:\n")
+mc_puts = seq_along(K)*NA; names(mc_puts) <- K
 for (kk in seq_along(K)){
-  mc_puts = pmax(K[kk]-mc_sprds,0)
-  cat(sprintf("K = %.1f: %.6f\n",K[kk],mean(exp(-r*T_t)*mc_puts)))
+  progress(kk,length(K))
+  put_payoffs = pmax(K[kk]-mc_sprds,0)
+  mc_puts[paste(K[kk])] = mean(exp(-r*T_t)*put_payoffs)
 }
+cat(sprintf("K = %.1f: %.6f\n",K,mc_puts))
+
 t2 = proc.time()
 cat("\nTime elapsed:\n")
 cat(unname(t2[3] - t1[3]))
