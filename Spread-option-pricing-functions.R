@@ -518,7 +518,7 @@ getSpreadOptionPriceRange <- function(K, modelType = modelNames$SV, r, T_t) {
     stop("Undefined model type!")
   }
 
-  return(abs(exp(-r*T_t)*priceRange))
+  return(Re(exp(-r*T_t)*priceRange))
 }
 
 #===============================================================#
@@ -581,7 +581,7 @@ SprHurdZhou <- function(K, fourierOutputHurdZhou, modelType = modelNames$SV,
     stop("p or q in Spr function is out of bound!")
   }
 
-  return(K * abs(
+  return(K * Re(
     (-1)^(p + q) * exp(-r*T_t) *
     (Delta_1 * Delta_2)/(2*pi)^2 * # Delta_x*N/(2*pi) = 1/lambda_x
     exp(-alpha_1*k_1 -alpha_2*k_2) *
@@ -590,9 +590,17 @@ SprHurdZhou <- function(K, fourierOutputHurdZhou, modelType = modelNames$SV,
 }
 
 getSpreadOptionPricesHurdZhou <- function(K, r, T_t) {
+  # We are going to calculate value for K = 0 as average of value for
+  # extremely small negative strike and extremely small positive strike
+  # i.e. (V[0-] + V[0+])/ 2, where V[K] stands for value of option with given
+  # strike K
+  zeroCloseK = 1e-3 # extremely small K instead of zero
+  if (0 %in% K) K = c(K,c(-1,1)*zeroCloseK)
+
   SpreadOptionPrices = matrix(rep(K,2) * NA,ncol = 2, dimnames=list(K,c("Call","Put")))
+  # Calculation of Calls (including negative strikes)
   for (kk in seq_along(K)) {
-    if (K[kk] == 0) K[kk] = 1e-5 # small K instead of zero
+    if (K[kk] == 0) next
 
     if (K[kk] > 0) {
       Strike = K[kk]
@@ -628,19 +636,26 @@ getSpreadOptionPricesHurdZhou <- function(K, r, T_t) {
     if (K[kk] < 0)
       SpreadOptionPrices[kk,1] = SpreadOptionPrices[kk,1] + CallPutParityDiff
 
-    }
-    # Puts calculated using Call-put parity
-    und1 = underlying1$getParams()
-    und2 = underlying2$getParams()
-    S_1_0 = und1$S_0; delta_1 = und1$delta
-    S_2_0 = und2$S_0; delta_2 = und2$delta
+  }
+  # zero strike handling
+  if ((all(c(-1,1,0)*zeroCloseK) %in% K)) {
+    SpreadOptionPrices["0",1] = mean(SpreadOptionPrices[paste(-zeroCloseK),1],
+                                 SpreadOptionPrices[paste(zeroCloseK),1])
+    K = K[!K %in% (c(-1,1)*zeroCloseK)]
+    SpreadOptionPrices = SpreadOptionPrices[paste(K),,drop=F]
+  }
+  # Puts calculated using Call-put parity
+  und1 = underlying1$getParams()
+  und2 = underlying2$getParams()
+  S_1_0 = und1$S_0; delta_1 = und1$delta
+  S_2_0 = und2$S_0; delta_2 = und2$delta
 
-    CallPutParityDiff = K*exp(-r*T_t) -
-                        ( S_1_0*exp(-delta_1*T_t) - S_2_0*exp(-delta_2*T_t) )
+  CallPutParityDiff = K*exp(-r*T_t) -
+                      ( S_1_0*exp(-delta_1*T_t) - S_2_0*exp(-delta_2*T_t) )
 
-    SpreadOptionPrices[,2] = SpreadOptionPrices[,1] + CallPutParityDiff
+  SpreadOptionPrices[,2] = SpreadOptionPrices[,1] + CallPutParityDiff
 
-    return(SpreadOptionPrices)
+  return(SpreadOptionPrices)
 }
 # Spr2 (spread value) function from HurdZhou paper (test for interpolation)
 SprHurdZhou2 <- function(p, q, modelType = modelNames$SV) {
@@ -651,7 +666,7 @@ SprHurdZhou2 <- function(p, q, modelType = modelNames$SV) {
   k_1 = k_1(p=p)
   k_2 = k_2(q=q)
 
-  return(abs(
+  return(Re(
     (-1)^(p + q) * exp(-r*T_t) *
     (Delta_1 * Delta_2)/(2*pi)^2 * # Delta_x*N/(2*pi) = 1/lambda_x
     exp(-alpha_1*k_1 -alpha_2*k_2) *
@@ -697,10 +712,9 @@ monteCarloSV <- function(underlying1, underlying2, volatility, corrs, r, T_t) {
 
     V[,1] = c(s_1_0,s_2_0,nu_0)
     for (ts in tsteps[-1]) {
-      V[c("s_1","s_1_alt"), ts] = V[c("s_1","s_1_alt"), ts-1] + (r-delta_1-1/2*sigma_1^2*V[c("nu","nu_alt"),ts-1])*dt + c(1,-1)*sigma_1*sqrt(V[c("nu","nu_alt"),ts-1])*dW["dW_1",ts]
-      V[c("s_2","s_2_alt"), ts] = V[c("s_2","s_2_alt"), ts-1] + (r-delta_2-1/2*sigma_2^2*V[c("nu","nu_alt"),ts-1])*dt + c(1,-1)*sigma_2*sqrt(V[c("nu","nu_alt"),ts-1])*dW["dW_2",ts]
+      V[c("s_1","s_1_alt"), ts] = V[c("s_1","s_1_alt"), ts-1] + (r-delta_1-1/2*sigma_1^2*pmax(V[c("nu","nu_alt"), ts-1],0))*dt + c(1,-1)*sigma_1*sqrt(pmax(V[c("nu","nu_alt"), ts-1],0))*dW["dW_1",ts]
+      V[c("s_2","s_2_alt"), ts] = V[c("s_2","s_2_alt"), ts-1] + (r-delta_2-1/2*sigma_2^2*pmax(V[c("nu","nu_alt"), ts-1],0))*dt + c(1,-1)*sigma_2*sqrt(pmax(V[c("nu","nu_alt"), ts-1],0))*dW["dW_2",ts]
       V[c("nu","nu_alt"), ts] = V[c("nu","nu_alt"), ts-1] + kappa*(mu-pmax(V[c("nu","nu_alt"), ts-1],0))*dt + c(1,-1)*sigma_nu*sqrt(pmax(V[c("nu","nu_alt"),ts-1],0))*dW["dW_nu",ts]
-      V[c("nu","nu_alt"), ts] = pmax(V[c("nu","nu_alt"), ts],0)
     }
     sims[[(ss+1)/2]] = V
     sprds[ss] = exp(V["s_2", sim_timesteps]) - exp(V["s_1", sim_timesteps])
