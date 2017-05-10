@@ -4,6 +4,18 @@ library(pracma)
 library(digest)
 library(dplyr)
 options(stringsAsFactors = FALSE)
+#===============================================================#
+#                    HELPER FUNCTIONS                           #
+#===============================================================#
+# progress function from klmr/rcane on github.com
+progress <- function (x, max = 100) {
+    percent <- x / max * 100
+    cat(sprintf('\r[%-50s] %d%%',
+                paste(rep('=', percent / 2), collapse = ''),
+                floor(percent)))
+    if (x == max)
+        cat('\n')
+}
 
 #===============================================================#
 #               PREPARATION FUNCTIONS                           #
@@ -636,6 +648,7 @@ getSpreadOptionPricesHurdZhou <- function(K, r, T_t) {
     if (K[kk] < 0)
       SpreadOptionPrices[kk,1] = SpreadOptionPrices[kk,1] + CallPutParityDiff
 
+    progress(kk,length(K))
   }
   # zero strike handling
   if ((all(c(-1,1,0)*zeroCloseK) %in% K)) {
@@ -680,6 +693,7 @@ SprHurdZhou2 <- function(p, q, modelType = modelNames$SV) {
 
 monteCarloSV <- function(underlying1, underlying2, volatility, corrs, r, T_t) {
   dt = T_t/sim_timesteps
+  sim_timesteps = sim_timesteps + 1
   tsteps = seq_len(sim_timesteps)
   lsims = seq_len(n_sim)
 
@@ -701,7 +715,7 @@ monteCarloSV <- function(underlying1, underlying2, volatility, corrs, r, T_t) {
 
   W_cor = matrix(unlist(corrs$getCorrelationMatrix()), nrow = 3)
 
-  sims = list()
+  #sims = list()
   sprds = lsims*NA
   for (ss in 2*lsims-1) {
     V = matrix(rep(tsteps, 6)*NA, nrow = 6,
@@ -716,15 +730,17 @@ monteCarloSV <- function(underlying1, underlying2, volatility, corrs, r, T_t) {
       V[c("s_2","s_2_alt"), ts] = V[c("s_2","s_2_alt"), ts-1] + (r-delta_2-1/2*sigma_2^2*pmax(V[c("nu","nu_alt"), ts-1],0))*dt + c(1,-1)*sigma_2*sqrt(pmax(V[c("nu","nu_alt"), ts-1],0))*dW["dW_2",ts]
       V[c("nu","nu_alt"), ts] = V[c("nu","nu_alt"), ts-1] + kappa*(mu-pmax(V[c("nu","nu_alt"), ts-1],0))*dt + c(1,-1)*sigma_nu*sqrt(pmax(V[c("nu","nu_alt"),ts-1],0))*dW["dW_nu",ts]
     }
-    sims[[(ss+1)/2]] = V
+    #sims[[(ss+1)/2]] = V
     sprds[ss] = exp(V["s_2", sim_timesteps]) - exp(V["s_1", sim_timesteps])
     sprds[ss+1] = exp(V["s_2_alt", sim_timesteps]) - exp(V["s_1_alt", sim_timesteps])
+    progress((ss+1)/2, n_sim)
   }
   return(sprds)
 }
 
-monteCarloGBM <- function(underlying1, underlying2, corrs, r, T_t) {
+monteCarloGBM <- function(underlying1, underlying2, corrs, r, T_t, sim_timesteps) {
   dt = T_t/sim_timesteps
+  sim_timesteps = sim_timesteps + 1
   tsteps = seq_len(sim_timesteps)
   lsims = seq_len(n_sim)
 
@@ -740,7 +756,7 @@ monteCarloGBM <- function(underlying1, underlying2, corrs, r, T_t) {
 
   W_cor = matrix(unlist(corrs$getCorrelationMatrix()[1:2,1:2]), nrow = 2)
 
-  sims = list()
+  #sims = list()
   sprds = lsims*NA
   for (ss in 2*lsims-1) {
     V = matrix(rep(tsteps, 4)*NA, nrow = 4,
@@ -754,15 +770,17 @@ monteCarloGBM <- function(underlying1, underlying2, corrs, r, T_t) {
       V[c("s_1","s_1_alt"), ts] = V[c("s_1","s_1_alt"), ts-1] + (r-delta_1-1/2*sigma_1^2)*dt + c(1,-1)*sigma_1*dW["dW_1",ts]
       V[c("s_2","s_2_alt"), ts] = V[c("s_2","s_2_alt"), ts-1] + (r-delta_2-1/2*sigma_2^2)*dt + c(1,-1)*sigma_2*dW["dW_2",ts]
     }
-    sims[[(ss+1)/2]] = V
+    #sims[[(ss+1)/2]] = V
     sprds[ss] = exp(V["s_2", sim_timesteps]) - exp(V["s_1", sim_timesteps])
     sprds[ss+1] = exp(V["s_2_alt", sim_timesteps]) - exp(V["s_1_alt", sim_timesteps])
+    progress((ss+1)/2, n_sim)
   }
   return(sprds)
 }
 
-monteCarloGBM2 <- function(underlying1, underlying2, corrs, r, T_t) {
+monteCarloGBM2 <- function(underlying1, underlying2, corrs, r, T_t, sim_timesteps) {
   dt = T_t/sim_timesteps
+  sim_timesteps = sim_timesteps + 1
   tsteps = seq_len(sim_timesteps)
   lsims = seq_len(n_sim)
 
@@ -778,7 +796,7 @@ monteCarloGBM2 <- function(underlying1, underlying2, corrs, r, T_t) {
 
   W_cor = matrix(unlist(corrs$getCorrelationMatrix()[1:2,1:2]), nrow = 2)
 
-  sims = list()
+  #sims = list()
   sprds = lsims*NA
   for (ss in 2*lsims-1) {
     V = matrix(rep(tsteps, 4)*NA, nrow = 4,
@@ -792,13 +810,51 @@ monteCarloGBM2 <- function(underlying1, underlying2, corrs, r, T_t) {
       V[c("S_1","S_1_alt"), ts] = V[c("S_1","S_1_alt"), ts-1]*(1 + (r-delta_1)*dt + c(1,-1)*sigma_1*dW["dW_1",ts])
       V[c("S_2","S_2_alt"), ts] = V[c("S_2","S_2_alt"), ts-1]*(1 + (r-delta_2)*dt + c(1,-1)*sigma_2*dW["dW_2",ts])
     }
-    sims[[(ss+1)/2]] = V
+    #sims[[(ss+1)/2]] = V
     sprds[ss] = V["S_2", sim_timesteps] - V["S_1", sim_timesteps]
     sprds[ss+1] = V["S_2_alt", sim_timesteps] - V["S_1_alt", sim_timesteps]
+    progress((ss+1)/2, n_sim)
   }
   return(sprds)
 }
 
 monteCarloGBM3 <- function(underlying1, underlying2, corrs, r, T_t) {
-  #NOTE: create function, based on analytical formulae (terminal S_T without steps)
+  sim_timesteps = 1
+  return(monteCarloGBM(underlying1, underlying2, corrs, r, T_t, sim_timesteps))
+}
+
+monteCarloGBM4 <- function(underlying1, underlying2, corrs, r, T_t) {
+  # optimized function, based on analytical formula (terminal S_T without steps)
+  lsims = seq_len(n_sim)
+
+  und1 = underlying1$getParams()
+  s_1_0 = log(und1$S_0)
+  sigma_1 = und1$sigma
+  delta_1 = und1$delta
+
+  und2 = underlying2$getParams()
+  s_2_0 = log(und2$S_0)
+  sigma_2 = und2$sigma
+  delta_2 = und2$delta
+
+  W_cor = matrix(unlist(corrs$getCorrelationMatrix()[1:2,1:2]), nrow = 2)
+
+  #sims = list()
+  sprds = seq_len(n_sim*2)*NA
+  V = matrix(rep(lsims, 4)*NA, nrow = 4,
+            dimnames = list(c("s_1", "s_2", "s_1_alt", "s_2_alt")))
+  dW = matrix(rnorm(n_sim*2, sd = sqrt(T_t)), nrow = 2)
+  dW = t(chol(W_cor)) %*% dW
+  dimnames(dW) = list(c("dW_1","dW_2"))
+  V["s_1",] = s_1_0 + (r-delta_1-1/2*sigma_1^2)*T_t + sigma_1*dW["dW_1",]
+  V["s_2",] = s_2_0 + (r-delta_2-1/2*sigma_2^2)*T_t + sigma_2*dW["dW_2",]
+  V["s_1_alt",] = s_1_0 + (r-delta_1-1/2*sigma_1^2)*T_t - sigma_1*dW["dW_1",]
+  V["s_2_alt",] = s_2_0 + (r-delta_2-1/2*sigma_2^2)*T_t - sigma_2*dW["dW_2",]
+
+  sprds = c(
+    exp(V["s_2",]) - exp(V["s_1",]),
+    exp(V["s_2_alt",]) - exp(V["s_1_alt",])
+  )
+
+  return(sprds)
 }
