@@ -64,67 +64,16 @@ K_last = underlying2$getInitPrice() - underlying1$getInitPrice()
 setLambdasAndDeltas(K = 1, u_minimum = u_min,
   underlying1 = underlying1, underlying2 = underlying2)
 
-## test params
-# actual value of underlyings and SV
-# S_1_0 = 96
-# S_2_0 = 100
-# nu_0 = 0.04
-#  dividend rates
-# delta_1 = 0.05
-# delta_2 = 0.05
-# volatilities of underlyings and SV
-# sigma_1 = 0.5
-# sigma_2 = 1.0
-# sigma_nu = 0.05
-# correlations
-# ro = 0.5
-# ro_1 = 0.25
-# ro_2 = -0.5
-# SV params
-# kappa = 1.0
-# mu = 0.04
-
-##---COMMENT---##
-#**LOOKS "GOOD" for GBM
-# lambda_1 = 5.375/N
-#
-#**LOOKS "GOOD" for SV
-# lambda_1 = 10/N
-#
-#**LOOKS "GOOD" for both
-# lambda_2 = lambda_1
-# alpha_1 = -1
-# alpha_2 = 1
-#
-##-END COMMENT-##
-
-# logarithmisation
-# s_1_0 = log(S_1_0)
-# s_2_0 = log(S_2_0)
-
-# helper variables
-# sigma_12 = sigma_21 = sigma_1*sigma_2*ro
-# sigma_1nu = sigma_nu1 = sigma_1*sigma_nu*ro_1
-# sigma_2nu = sigma_nu2 = sigma_2*sigma_nu*ro_2
-# S_cov = matrix(
-#   c(sigma_1^2, sigma_12,
-#     sigma_21, sigma_2^2), nrow = 2)
-#
-# sigma_nu_covs = t(c(sigma_1nu, sigma_2nu)) # row vector
-
-
 #===============================================================#
 #               BASIC FOURIER APPROACH                          #
 #===============================================================#
 if (runFastFourier) {
 t1 = proc.time()
 inverse = F
-# 1. chi(m, n) for chi_1(v_1, v_2) and chi_2(v_1, v_2), phi_sv(u_1, u_2)/phi_gbm(u_1, u_2) case
+# 1. preparation of input
 # 2. transformation of input
 # 3. calculate Pi components
 if (modelType == modelNames$SV) {
-  #sigma_1 = 0.5
-  #sigma_2 = 1.0
   cat("Preparation of input for Fourier transform ...\n")
   fourierInputXChi1SV = fourierInputX(charFuncChi1, charFuncSV)
   fourierInputXChi2SV = fourierInputX(charFuncChi2, charFuncSV)
@@ -140,8 +89,6 @@ if (modelType == modelNames$SV) {
   componentPi2.Over.SV = componentPi2.Over(modelType = modelType)
 
 } else if (modelType == modelNames$GBM) {
-  #sigma_1 = 0.1
-  #sigma_2 = 0.2
   cat("Preparation of input for Fourier transform ...\n")
   fourierInputXChi1GBM = fourierInputX(charFuncChi1, charFuncGBM)
   fourierInputXChi2GBM = fourierInputX(charFuncChi2, charFuncGBM)
@@ -161,11 +108,6 @@ if (modelType == modelNames$SV) {
 }
 
 spreadsFFT <- getSpreadOptionPriceRange(K = K, modelType = modelType, r = r, T_t = T_t)
-# for (kk in seq_along(K)) {
-#   cat(sprintf("Option value for K = %.1f:\n",K[kk]))
-#   cat(sprintf("\t%s bound: %.4f\n", c("Lower","Upper"), spreadsFFT[kk,]))
-#   cat(sprintf("Upper - lower bound: %.4f\n", spreadsFFT[kk,2]-spreadsFFT[kk,1]))
-# }
 print(spreadsFFT)
 
 t2 = proc.time()
@@ -186,27 +128,11 @@ cat("\n\n")
 #===============================================================#
 if (runMonteCarlo) {
 t1 = proc.time()
-#GBM other sigmas
-#sigma_1 = 0.1
-#sigma_2 = 0.2
-# sigma_12 = sigma_21 = sigma_1*sigma_2*ro
-# sigma_1nu = sigma_nu1 = sigma_1*sigma_nu*ro_1
-# sigma_2nu = sigma_nu2 = sigma_2*sigma_nu*ro_2
 
-# W_cov = matrix(
-#   c(sigma_1^2, sigma_12, sigma_1nu,
-#     sigma_21, sigma_2^2, sigma_2nu,
-#     sigma_nu1, sigma_nu2, sigma_nu^2),
-#     nrow = 3
-# )
 if (modelType == modelNames$GBM) {
-  #sigma_1 = 0.1
-  #sigma_2 = 0.2
   mc_sprds <- monteCarloGBM(underlying1 = underlying1, underlying2 = underlying2,
     corrs = corrs, r = r, T_t = T_t)
 } else if (modelType == modelNames$SV) {
-  #sigma_1 = 0.5
-  #sigma_2 = 1
   mc_sprds <- monteCarloSV(underlying1 = underlying1, underlying2 = underlying2,
     corrs = corrs, volatility = volatility, r = r, T_t = T_t)
 } else {
