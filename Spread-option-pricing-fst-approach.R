@@ -140,20 +140,10 @@ if (modelType == modelNames$GBM) {
 }
 
 cat("\nCalls:\n")
-mc_calls = seq_along(K)*NA; names(mc_calls) <- K
-for (kk in seq_along(K)){
-  progress(kk,length(K))
-  call_payoffs = pmax(mc_sprds-K[kk],0)
-  mc_calls[paste(K[kk])] = mean(exp(-r*T_t)*call_payoffs)
-}
+mc_calls <- optionPrices(S_T=mc_sprds,K=K,r=r,T_t=T_t,call=T)
 cat(sprintf("K = %.1f: %.6f\n",K,mc_calls))
 cat("\nPuts:\n")
-mc_puts = seq_along(K)*NA; names(mc_puts) <- K
-for (kk in seq_along(K)){
-  progress(kk,length(K))
-  put_payoffs = pmax(K[kk]-mc_sprds,0)
-  mc_puts[paste(K[kk])] = mean(exp(-r*T_t)*put_payoffs)
-}
+mc_puts <- optionPrices(S_T=mc_sprds,K=K,r=r,T_t=T_t,call=F)
 cat(sprintf("K = %.1f: %.6f\n",K,mc_puts))
 
 t2 = proc.time()

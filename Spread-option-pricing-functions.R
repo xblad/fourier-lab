@@ -691,6 +691,18 @@ SprHurdZhou2 <- function(p, q, modelType = modelNames$SV) {
 #               MONTE CARLO SIMULATION                          #
 #===============================================================#
 
+optionPayoff <- function(S_T, K, call=TRUE) {
+  return(
+    pmax(ifelse(call,1,-1) * (S_T-K),0)
+    )
+}
+
+optionPrices <- function(S_T, K, r, T_t, call=TRUE) {
+  prices = sapply(K,function(K) mean(exp(-r*T_t)*optionPayoff(S_T,K,call)))
+  names(prices) <- K
+  return(prices)
+}
+
 monteCarloSV <- function(underlying1, underlying2, volatility, corrs, r, T_t) {
   dt = T_t/sim_timesteps
   sim_timesteps = sim_timesteps + 1
