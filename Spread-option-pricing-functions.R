@@ -8,11 +8,11 @@ options(stringsAsFactors = FALSE)
 #                    HELPER FUNCTIONS                           #
 #===============================================================#
 # progress function from klmr/rcane on github.com
-progress <- function (x, max = 100) {
+progress <- function (x, max = 100, stepTime=0,totalTime=0) {
     percent <- x / max * 100
-    cat(sprintf('\r[%-50s] %d%%',
+    cat(sprintf('\r[%-50s] %d%% (%.3fs,%.2fs)',
                 paste(rep('=', percent / 2), collapse = ''),
-                floor(percent)))
+                floor(percent),stepTime,totalTime))
     if (x == max)
         cat('\n')
 }
@@ -147,7 +147,8 @@ create.correlations <- function() {
   )
 }
 
-getLogPricesIncrements <- function(K, u_minimum = u_min, underlying1, underlying2) {
+getLogPricesIncrements <- function(K, u_minimum = u_min,
+  underlying1, underlying2) {
   if (K < 0) stop("Function is undefined for non-positive strikes!")
   S_0 = c(underlying1$getInitPrice(), underlying2$getInitPrice())
   lambdas = NA * S_0
@@ -159,12 +160,15 @@ getLogPricesIncrements <- function(K, u_minimum = u_min, underlying1, underlying
       if (u_test > u_minimum) {
         lambdas[m] = pi/u_test
         break
+      } else if (j == (N-1)) {
+        lambdas[m] = pi/u_test
+        warning(
+          sprintf("Minimum bound is too high for K=%s,
+          last value have been used!",K)
+        )
       }
     }
   }
-
-  if (any(is.na(lambdas)))
-    stop("Impossible to find value for defined minimum bound!")
 
   return(lambdas)
 }
@@ -182,230 +186,12 @@ setLambdasAndDeltas <- function(K, u_minimum = u_min,
 }
 
 #===============================================================#
-#               FIRST FOURIER APPROACH                          #
+#               DISCRETIZATION FUNCTIONS                        #
 #===============================================================#
 
-
-## Characteristic functions
-# phi_T(u_1, u_2)
-charFunc_T <- function(u_1, u_2, type = modelNames$SV, underlying1, underlying2, corrs, volatility = NA, r, T_t) {
-  # general params and GBM
-  und1 = underlying1$getParams()
-  sigma_1 = und1$sigma
-  delta_1 = und1$delta
-
-  und2 = underlying2$getParams()
-  sigma_2 = und2$sigma
-  delta_2 = und2$delta
-
-  rho = corrs$getCorrelation(underlying1, underlying2)
-
-  # zeta definition
-  zeta = -1/2 * (
-    (sigma_1^2*u_1^2 + sigma_2^2*u_2^2 + 2*rho*sigma_1*sigma_2*u_1*u_2) +
-    i*(sigma_1^2*u_1 + sigma_2^2*u_2)
-  );
-  if (type == modelNames$GBM) {
-    return(
-      exp(
-        zeta*T_t +
-        # NOTE: strange... in HurdZhou with i, in DempsterHong without i...
-        i*u_1*(r - delta_1)*T_t + i*u_2*(r - delta_2)*T_t
-      )
-    )
-  } else if (type == modelNames$SV) {
-    # params SV
-    vol = volatility$getParams()
-    nu_0 = vol$nu_0
-    sigma_nu = vol$sigma
-    kappa = vol$kappa
-    mu = vol$mu
-
-    rho_1 = corrs$getCorrelation(underlying1, volatility)
-    rho_2 = corrs$getCorrelation(underlying2, volatility)
-
-    # gamma definition
-    gamma = kappa - i*(rho_1*sigma_1*u_1 + rho_2*sigma_2*u_2)*sigma_nu;
-    # theta definition
-    theta = sqrt(gamma^2 - 2*sigma_nu^2*zeta);
-
-    return(
-      exp(
-        ( 2*zeta*(1-exp(-theta*T_t)) / (2*theta - (theta-gamma)*(1-exp(-theta*T_t))) ) * nu_0 +
-        # NOTE: strange... in HurdZhou with i, in DempsterHong without i...
-        i*u_1*(r - delta_1)*T_t + i*u_2*(r - delta_2)*T_t -
-        kappa*mu/sigma_nu^2 * (2 * log( (2*theta - (theta-gamma)*(1-exp(-theta*T_t))) / (2*theta) ) + (theta - gamma)*T_t)
-      )
-    )
-  } else {
-    stop("Unknown type of characteristic function!")
-  }
-}
-
-# phi(u_1, u_2)
-charFunc <- function(u_1, u_2, type = modelNames$SV, underlying1, underlying2, corrs, volatility = NA, r, T_t) {
-  s_1_0 = log(underlying1$getInitPrice())
-  s_2_0 = log(underlying2$getInitPrice())
-
-  return(
-    exp(i*u_1*s_1_0 + i*u_2*s_2_0) *
-    charFunc_T(u_1 = u_1, u_2 = u_2, type = type,
-      underlying1 = underlying1, underlying2 = underlying2,
-      corrs = corrs, volatility = volatility, r = r, T_t = T_t)
-  )
-}
-
-# charFunc_V2 <- function(u_1, u_2, type = c("SV","GBM")) {
-#   type = head(type,1)
-#
-#   s_0 = t(c(s_1_0, s_2_0)) # row vector
-#   delta = t(c(delta_1, delta_2)) # row vector
-#   u = matrix(c(u_1,u_2),ncol=2) # row vector
-#
-#   # initial condition
-#   # NOTE: probably zero condition is irrelevant for phi_T (only for phi)???
-#   init_cond = i * u %*% t(s_0)
-#
-#   # zeta definition
-#   zeta = -1/2 * ( diag(u %*% S_cov %*% t(u)) + i*(u %*% diag(S_cov)) );
-#   if (type == "GBM") {
-#     return(
-#       exp(
-#         # zero condition is irrelevant for phi_T (only for phi)
-#         #init_cond +
-#         zeta*T_t +
-#         u_1*(r - delta_1)*T_t + u_2*(r - delta_2)*T_t
-#       )
-#     )
-#   } else if (type == "SV") {
-#     # gamma definition
-#     gamma = kappa - i * t(sigma_nu_covs %*% t(u));
-#     # theta definition
-#     theta = sqrt(gamma^2 - 2*sigma_nu^2*zeta);
-#
-#     return(
-#       exp(
-#         # NOTE: probably zero condition is irrelevant for phi_T (only for phi)???
-#         init_cond +
-#         ( 2*zeta*(1-exp(-theta*T_t)) / (2*theta - (theta-gamma)*(1-exp(-theta*T_t))) ) * nu_0 +
-#         # NOTE: strange... somewhere with i, somewhere without i...
-#         i * u %*% t(r - delta) * T_t -
-#         kappa*mu/sigma_nu^2 * (2 * log( (2*theta - (theta-gamma)*(1-exp(-theta*T_t))) / (2*theta) ) + (theta - gamma)*T_t)
-#       )
-#     )
-#   } else {
-#     stop("Unknown type of characteristic function!")
-#   }
-# }
-
-# phi_sv(u_1, u_2)
-charFuncSV <- function(u_1, u_2, underlying1, underlying2, corrs, volatility, r, T_t) {
-    charFunc(u_1 = u_1, u_2 = u_2, type = modelNames$SV,
-      underlying1 = underlying1, underlying2 = underlying2,
-      corrs = corrs, volatility = volatility, r = r, T_t = T_t)
-}
-
-# phi_gbm(u_1, u_2)
-charFuncGBM <- function(u_1, u_2, underlying1, underlying2, corrs, volatility = NA, r, T_t) {
-  charFunc(u_1 = u_1, u_2 = u_2, type = modelNames$GBM,
-    underlying1 = underlying1, underlying2 = underlying2,
-    volatility = volatility,
-    corrs = corrs, r = r, T_t = T_t)
-}
-
-# phi_T,sv(u_1, u_2)
-charFuncSV_T <- function(u_1, u_2, underlying1, underlying2, corrs, volatility, r, T_t) {
-    charFunc_T(u_1 = u_1, u_2 = u_2, type = modelNames$SV,
-      underlying1 = underlying1, underlying2 = underlying2,
-      corrs = corrs, volatility = volatility, r = r, T_t = T_t)
-}
-
-# phi_T,gbm(u_1, u_2)
-charFuncGBM_T <- function(u_1, u_2, underlying1, underlying2, corrs, volatility = NA, r, T_t) {
-  charFunc_T(u_1 = u_1, u_2 = u_2, type = modelNames$GBM,
-    underlying1 = underlying1, underlying2 = underlying2,
-    volatility = volatility,
-    corrs = corrs, r = r, T_t = T_t)
-}
-
-getCharFunction <- function(modelType, initConds = FALSE) {
-  # function returns characteristic function depend on selected model
-  # and whather with initial conditions (phi) or without (phi_T)
-    if (modelType == modelNames$SV) {
-        if (initConds) {charFuncSV}
-        else {charFuncSV_T}
-    } else if (modelType == modelNames$GBM) {
-        if (initConds) {charFuncGBM}
-        else {charFuncGBM_T}
-    }
-}
-
-# chi_1(v_1, v_2)
-charFuncChi1 <- function(v_1, v_2, charFunc = charFuncSV) {
-  return(
-    (
-      charFunc(v_1-alpha_1*i, v_2-(alpha_2+1)*i,
-        underlying1 = underlying1, underlying2 = underlying2,
-        corrs = corrs, volatility = volatility, r = r, T_t = T_t) -
-      charFunc(v_1-(alpha_1+1)*i, v_2-alpha_2*i,
-        underlying1 = underlying1, underlying2 = underlying2,
-        corrs = corrs, volatility = volatility, r = r, T_t = T_t)
-    ) /
-    ((alpha_1+i*v_1)*(alpha_2+i*v_2))
-  )
-}
-
-# chi_2(v_1, v_2)
-charFuncChi2 <- function(v_1, v_2, charFunc = charFuncSV) {
-  return(
-    (charFunc(v_1-alpha_1*i, v_2-alpha_2*i,
-      underlying1 = underlying1, underlying2 = underlying2,
-      corrs = corrs, volatility = volatility, r = r, T_t = T_t)) /
-    ((alpha_1+i*v_1)*(alpha_2+i*v_2))
-  )
-}
-
-## Fourier transformation
 # v_1,m, v_2,n
 v_1 <- function(m) (m-N/2)*Delta_1
 v_2 <- function(n) (n-N/2)*Delta_2
-
-# chi(m, n)
-fourierInputX <- function(charFuncChi, charFunc = charFuncSV) {
-  m = n = seq_len(N)-1
-  combs = expand.grid(n = n, m = m) # all possible combinations of n and m
-  m = combs$m; n = combs$n
-  X = (-1)^(m+n) * charFuncChi(v_1(m), v_2(n), charFunc)
-  X = matrix(X, nrow = N, byrow = TRUE)
-
-  return(X)
-}
-
-# Gamma(p, q) in DEMPSTER HONG
-fourierOutputDempsterHongSelect <- function(p, q, Chi = 1, modelType = modelNames$SV) {
-  if (Chi == 1) {
-    if (modelType == modelNames$SV) {
-      fourierOutputDempsterHong = fourierOutputDempsterHongChi1SV
-    } else if (modelType == modelNames$GBM) {
-      fourierOutputDempsterHong = fourierOutputDempsterHongChi1GBM
-    }
-  }
-  else if (Chi == 2) {
-    if (modelType == modelNames$SV) {
-      fourierOutputDempsterHong = fourierOutputDempsterHongChi2SV
-    } else if (modelType == modelNames$GBM) {
-      fourierOutputDempsterHong = fourierOutputDempsterHongChi2GBM
-    }
-  }
-  # q can be +-Inf, we need to replace it by max/min q
-  q = pmax(pmin(q, N-1),0)
-  p = pmax(pmin(p, N-1),0) # p also can't be out of bounds
-  combs = expand.grid(q = q, p = p) # all possible combinations of p and q
-  signCombs = (-1)^(combs$p + combs$q)
-  signMatrix = matrix(signCombs, nrow = length(p), byrow = TRUE)
-
-  return(signMatrix * fourierOutputDempsterHong[p+1,q+1])
-}
 
 # k_1,p, k_2,q, p, q
 k_1 <- function(p) (p-N/2)*lambda_1
@@ -444,6 +230,195 @@ pp <- function(k_1_p) {
 }
 qq <- function(k_2_q) {
   as.numeric(round(k_2_q/lambda_2 + N/2,0))
+}
+
+#===============================================================#
+#               CHARACTERISTIC FUNCTIONS                        #
+#===============================================================#
+
+# phi_T(u_1, u_2)
+charFunc_T <- function(u_1, u_2, type = modelNames$SV,
+  underlying1, underlying2, corrs, volatility = NA, r, T_t) {
+  # general params and GBM
+  und1 = underlying1$getParams()
+  sigma_1 = und1$sigma
+  delta_1 = und1$delta
+
+  und2 = underlying2$getParams()
+  sigma_2 = und2$sigma
+  delta_2 = und2$delta
+
+  rho = corrs$getCorrelation(underlying1, underlying2)
+
+  # zeta definition
+  zeta = -1/2 * (
+    (sigma_1^2*u_1^2 + sigma_2^2*u_2^2 + 2*rho*sigma_1*sigma_2*u_1*u_2) +
+    i*(sigma_1^2*u_1 + sigma_2^2*u_2)
+  );
+  if (type == modelNames$GBM) {
+    return(
+      exp(
+        zeta*T_t +
+        i*u_1*(r - delta_1)*T_t + i*u_2*(r - delta_2)*T_t
+      )
+    )
+  } else if (type == modelNames$SV) {
+    # params SV
+    vol = volatility$getParams()
+    nu_0 = vol$nu_0
+    sigma_nu = vol$sigma
+    kappa = vol$kappa
+    mu = vol$mu
+
+    rho_1 = corrs$getCorrelation(underlying1, volatility)
+    rho_2 = corrs$getCorrelation(underlying2, volatility)
+
+    # gamma definition
+    gamma = kappa - i*(rho_1*sigma_1*u_1 + rho_2*sigma_2*u_2)*sigma_nu;
+    # theta definition
+    theta = sqrt(gamma^2 - 2*sigma_nu^2*zeta);
+
+    return(
+      exp(
+        ( 2*zeta*(1-exp(-theta*T_t)) /
+          (2*theta - (theta-gamma)*(1-exp(-theta*T_t))) ) * nu_0 +
+        i*u_1*(r - delta_1)*T_t + i*u_2*(r - delta_2)*T_t -
+        kappa*mu/sigma_nu^2 *
+        (2 * log( (2*theta - (theta-gamma)*(1-exp(-theta*T_t))) /(2*theta) ) +
+        (theta - gamma)*T_t)
+      )
+    )
+  } else {
+    stop("Unknown type of characteristic function!")
+  }
+}
+
+# phi(u_1, u_2)
+charFunc <- function(u_1, u_2, type = modelNames$SV,
+  underlying1, underlying2, corrs, volatility = NA, r, T_t) {
+  s_1_0 = log(underlying1$getInitPrice())
+  s_2_0 = log(underlying2$getInitPrice())
+
+  return(
+    exp(i*u_1*s_1_0 + i*u_2*s_2_0) *
+    charFunc_T(u_1 = u_1, u_2 = u_2, type = type,
+      underlying1 = underlying1, underlying2 = underlying2,
+      corrs = corrs, volatility = volatility, r = r, T_t = T_t)
+  )
+}
+
+# phi_sv(u_1, u_2)
+charFuncSV <- function(u_1, u_2,
+  underlying1, underlying2, corrs, volatility, r, T_t) {
+    charFunc(u_1 = u_1, u_2 = u_2, type = modelNames$SV,
+      underlying1 = underlying1, underlying2 = underlying2,
+      corrs = corrs, volatility = volatility, r = r, T_t = T_t)
+}
+
+# phi_gbm(u_1, u_2)
+charFuncGBM <- function(u_1, u_2,
+  underlying1, underlying2, corrs, volatility = NA, r, T_t) {
+  charFunc(u_1 = u_1, u_2 = u_2, type = modelNames$GBM,
+    underlying1 = underlying1, underlying2 = underlying2,
+    volatility = volatility,
+    corrs = corrs, r = r, T_t = T_t)
+}
+
+# phi_T,sv(u_1, u_2)
+charFuncSV_T <- function(u_1, u_2,
+  underlying1, underlying2, corrs, volatility, r, T_t) {
+    charFunc_T(u_1 = u_1, u_2 = u_2, type = modelNames$SV,
+      underlying1 = underlying1, underlying2 = underlying2,
+      corrs = corrs, volatility = volatility, r = r, T_t = T_t)
+}
+
+# phi_T,gbm(u_1, u_2)
+charFuncGBM_T <- function(u_1, u_2,
+  underlying1, underlying2, corrs, volatility = NA, r, T_t) {
+  charFunc_T(u_1 = u_1, u_2 = u_2, type = modelNames$GBM,
+    underlying1 = underlying1, underlying2 = underlying2,
+    volatility = volatility,
+    corrs = corrs, r = r, T_t = T_t)
+}
+
+getCharFunction <- function(modelType, initConds = FALSE) {
+  # function returns characteristic function depend on selected model
+  # and whather with initial conditions (phi) or without (phi_T)
+    if (modelType == modelNames$SV) {
+        if (initConds) {charFuncSV}
+        else {charFuncSV_T}
+    } else if (modelType == modelNames$GBM) {
+        if (initConds) {charFuncGBM}
+        else {charFuncGBM_T}
+    }
+}
+
+#===============================================================#
+#               DEMPSTER-HONG APPROACH                          #
+#===============================================================#
+
+# chi_1(v_1, v_2)
+charFuncChi1 <- function(v_1, v_2, charFunc = charFuncSV) {
+  return(
+    (
+      charFunc(v_1-alpha_1*i, v_2-(alpha_2+1)*i,
+        underlying1 = underlying1, underlying2 = underlying2,
+        corrs = corrs, volatility = volatility, r = r, T_t = T_t) -
+      charFunc(v_1-(alpha_1+1)*i, v_2-alpha_2*i,
+        underlying1 = underlying1, underlying2 = underlying2,
+        corrs = corrs, volatility = volatility, r = r, T_t = T_t)
+    ) /
+    ((alpha_1+i*v_1)*(alpha_2+i*v_2))
+  )
+}
+
+# chi_2(v_1, v_2)
+charFuncChi2 <- function(v_1, v_2, charFunc = charFuncSV) {
+  return(
+    (charFunc(v_1-alpha_1*i, v_2-alpha_2*i,
+      underlying1 = underlying1, underlying2 = underlying2,
+      corrs = corrs, volatility = volatility, r = r, T_t = T_t)) /
+    ((alpha_1+i*v_1)*(alpha_2+i*v_2))
+  )
+}
+
+## Fourier transformation
+# chi(m, n)
+fourierInputX <- function(charFuncChi, charFunc = charFuncSV) {
+  m = n = seq_len(N)-1
+  combs = expand.grid(n = n, m = m) # all possible combinations of n and m
+  m = combs$m; n = combs$n
+  X = (-1)^(m+n) * charFuncChi(v_1(m), v_2(n), charFunc)
+  X = matrix(X, nrow = N, byrow = TRUE)
+
+  return(X)
+}
+
+# Gamma(p, q) in DEMPSTER HONG
+fourierOutputDempsterHongSelect <- function(p, q, Chi = 1,
+  modelType = modelNames$SV) {
+  if (Chi == 1) {
+    if (modelType == modelNames$SV) {
+      fourierOutputDempsterHong = fourierOutputDempsterHongChi1SV
+    } else if (modelType == modelNames$GBM) {
+      fourierOutputDempsterHong = fourierOutputDempsterHongChi1GBM
+    }
+  }
+  else if (Chi == 2) {
+    if (modelType == modelNames$SV) {
+      fourierOutputDempsterHong = fourierOutputDempsterHongChi2SV
+    } else if (modelType == modelNames$GBM) {
+      fourierOutputDempsterHong = fourierOutputDempsterHongChi2GBM
+    }
+  }
+  # q can be +-Inf, we need to replace it by max/min q
+  q = pmax(pmin(q, N-1),0)
+  p = pmax(pmin(p, N-1),0) # p also can't be out of bounds
+  combs = expand.grid(q = q, p = p) # all possible combinations of p and q
+  signCombs = (-1)^(combs$p + combs$q)
+  signMatrix = matrix(signCombs, nrow = length(p), byrow = TRUE)
+
+  return(signMatrix * fourierOutputDempsterHong[p+1,q+1])
 }
 
 # Pi(k_1,p, k_2,q)
@@ -513,7 +488,8 @@ componentPi2.Over <- function(modelType = modelNames$SV) {
 
 # spread option price range for V(K)
 getSpreadOptionPriceRange <- function(K, modelType = modelNames$SV, r, T_t) {
-  priceRange = matrix(NA, nrow = length(K), ncol = 2, dimnames = list(K, c("lower","upper")))
+  priceRange = matrix(NA, nrow = length(K), ncol = 2,
+    dimnames = list(K, c("lower","upper")))
   if (modelType == modelNames$SV) {
     priceRange[,1] = componentPi1.Under.SV -
                     K * componentPi2.Under.SV
@@ -534,21 +510,16 @@ getSpreadOptionPriceRange <- function(K, modelType = modelNames$SV, r, T_t) {
 }
 
 #===============================================================#
-#               SECOND FOURIER APPROACH                         #
+#                    HURD-ZHOU APPROACH                         #
 #===============================================================#
 
 # P^hat(u)
-payoffCoreFuncComplexGamma <- function(u_1, u_2, negativeStrike = FALSE) {
-  if (!negativeStrike) {
-    return( gammaz(i*(u_1+u_2)-1) * gammaz(-i*u_2) / gammaz(i*u_1+1) )
-  } else {
-   return( -1 * payoffCoreFuncComplexGamma(u_2, u_1) )
-  }
-  #return(1/((1-i*u_1)*u_2*(u_1+u_2+i)))
+payoffCoreFuncComplexGamma <- function(u_1, u_2) {
+  return( gammaz(i*(u_1+u_2)-1) * gammaz(-i*u_2) / gammaz(i*u_1+1) )
 }
 
 # HurdZhou inverse fourier transform input
-fourierInputHurdZhou <- function(charFunc_T = charFuncSV_T, negativeStrike = FALSE,
+fourierInputHurdZhou <- function(charFunc_T = charFuncSV_T,
   underlying1, underlying2, corrs, volatility = NA, r, T_t) {
   if (alpha_2 <= 0) {
     stop("Second decay term (alpha_2) should be higher than zero!")
@@ -562,17 +533,12 @@ fourierInputHurdZhou <- function(charFunc_T = charFuncSV_T, negativeStrike = FAL
 
   u_1 = v_1(m)+i*alpha_1
   u_2 = v_2(n)+i*alpha_2
-  if (negativeStrike) {
-    u_1 = v_1(m)+i*alpha_2; u_2 = v_2(n)+i*alpha_1
-  }
+
   charFuncResult = charFunc_T(u_1 = u_1, u_2 = u_2,
     underlying1 = underlying1, underlying2 = underlying2, corrs = corrs,
     volatility = volatility, r = r, T_t = T_t)
-  complexGammaPayoffCore = payoffCoreFuncComplexGamma(u_1, u_2, negativeStrike)
-  # NOTE: with or without zero condition??? Now without
+  complexGammaPayoffCore = payoffCoreFuncComplexGamma(u_1, u_2)
   H = (-1)^(m+n) *
-      # NOTE: in Hurd Zhou exp() function in characteristic function
-      # for SV is missed!
       charFuncResult *
       complexGammaPayoffCore
   H = matrix(H, nrow = N, byrow = TRUE)
@@ -609,9 +575,12 @@ getSpreadOptionPricesHurdZhou <- function(K, r, T_t) {
   zeroCloseK = 1e-3 # extremely small K instead of zero
   if (0 %in% K) K = c(K,c(-1,1)*zeroCloseK)
 
-  SpreadOptionPrices = matrix(rep(K,2) * NA,ncol = 2, dimnames=list(K,c("Call","Put")))
+  SpreadOptionPrices = matrix(rep(K,2) * NA,ncol = 2,
+    dimnames=list(K,c("Call","Put")))
   # Calculation of Calls (including negative strikes)
+  t_begin = proc.time()[3]
   for (kk in seq_along(K)) {
+    t_start = proc.time()[3]
     if (K[kk] == 0) next
 
     if (K[kk] > 0) {
@@ -648,7 +617,8 @@ getSpreadOptionPricesHurdZhou <- function(K, r, T_t) {
     if (K[kk] < 0)
       SpreadOptionPrices[kk,1] = SpreadOptionPrices[kk,1] + CallPutParityDiff
 
-    progress(kk,length(K))
+    t_finish = proc.time()[3]
+    progress(kk,length(K),t_finish-t_start,t_finish-t_begin)
   }
   # zero strike handling
   if ((all(c(-1,1,0)*zeroCloseK) %in% K)) {
@@ -670,22 +640,6 @@ getSpreadOptionPricesHurdZhou <- function(K, r, T_t) {
 
   return(SpreadOptionPrices)
 }
-# Spr2 (spread value) function from HurdZhou paper (test for interpolation)
-SprHurdZhou2 <- function(p, q, modelType = modelNames$SV) {
-
-  if (any(!c(p,q) %in% (seq_len(N)-1))) {
-    stop("p or q in Spr function is out of bound!")
-  }
-  k_1 = k_1(p=p)
-  k_2 = k_2(q=q)
-
-  return(Re(
-    (-1)^(p + q) * exp(-r*T_t) *
-    (Delta_1 * Delta_2)/(2*pi)^2 * # Delta_x*N/(2*pi) = 1/lambda_x
-    exp(-alpha_1*k_1 -alpha_2*k_2) *
-    fourierOutputHurdZhouSelect(modelType)[p+1,q+1]
-  ))
-}
 
 #===============================================================#
 #               MONTE CARLO SIMULATION                          #
@@ -697,10 +651,16 @@ optionPayoff <- function(S_T, K, call=TRUE) {
     )
 }
 
-optionPrices <- function(S_T, K, r, T_t, call=TRUE) {
-  prices = sapply(K,function(K) mean(exp(-r*T_t)*optionPayoff(S_T,K,call)))
-  names(prices) <- K
-  return(prices)
+optionPrices <- function(S_T, K, r, T_t, call=TRUE, se=TRUE) {
+  opt = list()
+  opt$prices = sapply(K,function(K)
+    mean(exp(-r*T_t)*optionPayoff(S_T,K,call)))
+  names(opt$prices) <- K
+  if (se) {
+    opt$se = sd(optionPayoff(S_T,1,call))/sqrt(length(S_T))
+    return(opt)
+  }
+  return(opt$prices)
 }
 
 monteCarloSV <- function(underlying1, underlying2, volatility, corrs, r, T_t) {
@@ -727,9 +687,10 @@ monteCarloSV <- function(underlying1, underlying2, volatility, corrs, r, T_t) {
 
   W_cor = matrix(unlist(corrs$getCorrelationMatrix()), nrow = 3)
 
-  #sims = list()
   sprds = lsims*NA
-  for (ss in 2*lsims-1) {
+  t_begin = proc.time()[3]
+  lapply((2*lsims-1), function(ss){
+    t_start = proc.time()[3]
     V = matrix(rep(tsteps, 6)*NA, nrow = 6,
     dimnames = list(c("s_1", "s_2", "nu", "s_1_alt", "s_2_alt", "nu_alt")))
     dW = matrix(rnorm(sim_timesteps*3, sd = sqrt(dt)), nrow = 3)
@@ -738,19 +699,28 @@ monteCarloSV <- function(underlying1, underlying2, volatility, corrs, r, T_t) {
 
     V[,1] = c(s_1_0,s_2_0,nu_0)
     for (ts in tsteps[-1]) {
-      V[c("s_1","s_1_alt"), ts] = V[c("s_1","s_1_alt"), ts-1] + (r-delta_1-1/2*sigma_1^2*pmax(V[c("nu","nu_alt"), ts-1],0))*dt + c(1,-1)*sigma_1*sqrt(pmax(V[c("nu","nu_alt"), ts-1],0))*dW["dW_1",ts]
-      V[c("s_2","s_2_alt"), ts] = V[c("s_2","s_2_alt"), ts-1] + (r-delta_2-1/2*sigma_2^2*pmax(V[c("nu","nu_alt"), ts-1],0))*dt + c(1,-1)*sigma_2*sqrt(pmax(V[c("nu","nu_alt"), ts-1],0))*dW["dW_2",ts]
-      V[c("nu","nu_alt"), ts] = V[c("nu","nu_alt"), ts-1] + kappa*(mu-pmax(V[c("nu","nu_alt"), ts-1],0))*dt + c(1,-1)*sigma_nu*sqrt(pmax(V[c("nu","nu_alt"),ts-1],0))*dW["dW_nu",ts]
+      V[c("s_1","s_1_alt"), ts] = V[c("s_1","s_1_alt"), ts-1] +
+        (r-delta_1-1/2*sigma_1^2*pmax(V[c("nu","nu_alt"), ts-1],0))*dt +
+        c(1,-1)*sigma_1*sqrt(pmax(V[c("nu","nu_alt"), ts-1],0))*dW["dW_1",ts]
+      V[c("s_2","s_2_alt"), ts] = V[c("s_2","s_2_alt"), ts-1] +
+        (r-delta_2-1/2*sigma_2^2*pmax(V[c("nu","nu_alt"), ts-1],0))*dt +
+        c(1,-1)*sigma_2*sqrt(pmax(V[c("nu","nu_alt"), ts-1],0))*dW["dW_2",ts]
+      V[c("nu","nu_alt"), ts] = V[c("nu","nu_alt"), ts-1] +
+        kappa*(mu-pmax(V[c("nu","nu_alt"), ts-1],0))*dt +
+        c(1,-1)*sigma_nu*sqrt(pmax(V[c("nu","nu_alt"),ts-1],0))*dW["dW_nu",ts]
     }
-    #sims[[(ss+1)/2]] = V
-    sprds[ss] = exp(V["s_2", sim_timesteps]) - exp(V["s_1", sim_timesteps])
-    sprds[ss+1] = exp(V["s_2_alt", sim_timesteps]) - exp(V["s_1_alt", sim_timesteps])
-    progress((ss+1)/2, n_sim)
-  }
+    sprds[ss] <<- exp(V["s_1", sim_timesteps]) - exp(V["s_2", sim_timesteps])
+    sprds[ss+1] <<- exp(V["s_1_alt", sim_timesteps]) -
+                    exp(V["s_2_alt", sim_timesteps])
+
+    t_finish = proc.time()[3]
+    progress((ss+1)/2, n_sim, t_finish-t_start, t_finish-t_begin)
+  })
   return(sprds)
 }
 
-monteCarloGBM <- function(underlying1, underlying2, corrs, r, T_t, sim_timesteps) {
+monteCarloGBM <- function(underlying1, underlying2, corrs, r, T_t,
+  sim_timesteps) {
   dt = T_t/sim_timesteps
   sim_timesteps = sim_timesteps + 1
   tsteps = seq_len(sim_timesteps)
@@ -768,9 +738,10 @@ monteCarloGBM <- function(underlying1, underlying2, corrs, r, T_t, sim_timesteps
 
   W_cor = matrix(unlist(corrs$getCorrelationMatrix()[1:2,1:2]), nrow = 2)
 
-  #sims = list()
   sprds = lsims*NA
+  t_begin = proc.time()[3]
   for (ss in 2*lsims-1) {
+    t_start = proc.time()[3]
     V = matrix(rep(tsteps, 4)*NA, nrow = 4,
     dimnames = list(c("s_1", "s_2", "s_1_alt", "s_2_alt")))
     dW = matrix(rnorm(sim_timesteps*2, sd = sqrt(dt)), nrow = 2)
@@ -779,18 +750,23 @@ monteCarloGBM <- function(underlying1, underlying2, corrs, r, T_t, sim_timesteps
 
     V[,1] = c(s_1_0,s_2_0)
     for (ts in tsteps[-1]) {
-      V[c("s_1","s_1_alt"), ts] = V[c("s_1","s_1_alt"), ts-1] + (r-delta_1-1/2*sigma_1^2)*dt + c(1,-1)*sigma_1*dW["dW_1",ts]
-      V[c("s_2","s_2_alt"), ts] = V[c("s_2","s_2_alt"), ts-1] + (r-delta_2-1/2*sigma_2^2)*dt + c(1,-1)*sigma_2*dW["dW_2",ts]
+      V[c("s_1","s_1_alt"), ts] = V[c("s_1","s_1_alt"), ts-1] +
+        (r-delta_1-1/2*sigma_1^2)*dt + c(1,-1)*sigma_1*dW["dW_1",ts]
+      V[c("s_2","s_2_alt"), ts] = V[c("s_2","s_2_alt"), ts-1] +
+        (r-delta_2-1/2*sigma_2^2)*dt + c(1,-1)*sigma_2*dW["dW_2",ts]
     }
-    #sims[[(ss+1)/2]] = V
-    sprds[ss] = exp(V["s_2", sim_timesteps]) - exp(V["s_1", sim_timesteps])
-    sprds[ss+1] = exp(V["s_2_alt", sim_timesteps]) - exp(V["s_1_alt", sim_timesteps])
-    progress((ss+1)/2, n_sim)
+    sprds[ss] = exp(V["s_1", sim_timesteps]) - exp(V["s_2", sim_timesteps])
+    sprds[ss+1] = exp(V["s_1_alt", sim_timesteps]) -
+                  exp(V["s_2_alt", sim_timesteps])
+
+    t_finish = proc.time()[3]
+    progress((ss+1)/2, n_sim, t_finish-t_start, t_finish-t_begin)
   }
   return(sprds)
 }
 
-monteCarloGBM2 <- function(underlying1, underlying2, corrs, r, T_t, sim_timesteps) {
+monteCarloGBM2 <- function(underlying1, underlying2, corrs, r, T_t,
+  sim_timesteps) {
   dt = T_t/sim_timesteps
   sim_timesteps = sim_timesteps + 1
   tsteps = seq_len(sim_timesteps)
@@ -808,9 +784,10 @@ monteCarloGBM2 <- function(underlying1, underlying2, corrs, r, T_t, sim_timestep
 
   W_cor = matrix(unlist(corrs$getCorrelationMatrix()[1:2,1:2]), nrow = 2)
 
-  #sims = list()
   sprds = lsims*NA
+  t_begin = proc.time()[3]
   for (ss in 2*lsims-1) {
+    t_start = proc.time()[3]
     V = matrix(rep(tsteps, 4)*NA, nrow = 4,
                dimnames = list(c("S_1", "S_2", "S_1_alt", "S_2_alt")))
     dW = matrix(rnorm(sim_timesteps*2, sd = sqrt(dt)), nrow = 2)
@@ -819,13 +796,16 @@ monteCarloGBM2 <- function(underlying1, underlying2, corrs, r, T_t, sim_timestep
 
     V[,1] = c(S_1_0,S_2_0)
     for (ts in tsteps[-1]) {
-      V[c("S_1","S_1_alt"), ts] = V[c("S_1","S_1_alt"), ts-1]*(1 + (r-delta_1)*dt + c(1,-1)*sigma_1*dW["dW_1",ts])
-      V[c("S_2","S_2_alt"), ts] = V[c("S_2","S_2_alt"), ts-1]*(1 + (r-delta_2)*dt + c(1,-1)*sigma_2*dW["dW_2",ts])
+      V[c("S_1","S_1_alt"), ts] = V[c("S_1","S_1_alt"), ts-1]*(1 +
+        (r-delta_1)*dt + c(1,-1)*sigma_1*dW["dW_1",ts])
+      V[c("S_2","S_2_alt"), ts] = V[c("S_2","S_2_alt"), ts-1]*(1 +
+        (r-delta_2)*dt + c(1,-1)*sigma_2*dW["dW_2",ts])
     }
-    #sims[[(ss+1)/2]] = V
-    sprds[ss] = V["S_2", sim_timesteps] - V["S_1", sim_timesteps]
-    sprds[ss+1] = V["S_2_alt", sim_timesteps] - V["S_1_alt", sim_timesteps]
-    progress((ss+1)/2, n_sim)
+    sprds[ss] = V["S_1", sim_timesteps] - V["S_2", sim_timesteps]
+    sprds[ss+1] = V["S_1_alt", sim_timesteps] - V["S_2_alt", sim_timesteps]
+
+    t_finish = proc.time()[3]
+    progress((ss+1)/2, n_sim, t_finish-t_start, t_finish-t_begin)
   }
   return(sprds)
 }
@@ -835,8 +815,10 @@ monteCarloGBM3 <- function(underlying1, underlying2, corrs, r, T_t) {
   return(monteCarloGBM(underlying1, underlying2, corrs, r, T_t, sim_timesteps))
 }
 
+#USE THIS
 monteCarloGBM4 <- function(underlying1, underlying2, corrs, r, T_t) {
-  # optimized function, based on analytical formula (terminal S_T without steps)
+  # optimized function, based on analytical formula
+  # (terminal S_T without steps)
   lsims = seq_len(n_sim)
 
   und1 = underlying1$getParams()
@@ -851,7 +833,6 @@ monteCarloGBM4 <- function(underlying1, underlying2, corrs, r, T_t) {
 
   W_cor = matrix(unlist(corrs$getCorrelationMatrix()[1:2,1:2]), nrow = 2)
 
-  #sims = list()
   sprds = seq_len(n_sim*2)*NA
   V = matrix(rep(lsims, 4)*NA, nrow = 4,
             dimnames = list(c("s_1", "s_2", "s_1_alt", "s_2_alt")))
@@ -864,8 +845,8 @@ monteCarloGBM4 <- function(underlying1, underlying2, corrs, r, T_t) {
   V["s_2_alt",] = s_2_0 + (r-delta_2-1/2*sigma_2^2)*T_t - sigma_2*dW["dW_2",]
 
   sprds = c(
-    exp(V["s_2",]) - exp(V["s_1",]),
-    exp(V["s_2_alt",]) - exp(V["s_1_alt",])
+    exp(V["s_1",]) - exp(V["s_2",]),
+    exp(V["s_1_alt",]) - exp(V["s_2_alt",])
   )
 
   return(sprds)
