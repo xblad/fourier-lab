@@ -29,7 +29,7 @@ T_t = 1.0
 # number of discretization, steps etc.
 N = 256
 # trancation error param
-u_min = 20
+u_min = 40
 # decay terms for square-intergability
 alpha_1 = -3
 alpha_2 = 1

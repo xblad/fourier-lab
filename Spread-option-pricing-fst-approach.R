@@ -41,8 +41,8 @@ K = seq(-40,40,1)
 # model for joint characteristic function (GBM, SV etc.)
 modelType = modelNames$SV
 # Monte carlo params
-n_sim = 10^2
-sim_timesteps = 2000 # irrelevant in case of MonteCarloGBM3 or MonteCarloGBM4 
+n_sim = 10^1
+sim_timesteps = 2000 # irrelevant in case of MonteCarloGBM3 or MonteCarloGBM4
 ## END ~~ PARAMS SETTINGS ~~ END ##
 
 # params settings
@@ -126,6 +126,7 @@ cat("\n\n")
 #===============================================================#
 #               MONTE CARLO SIMULATION                          #
 #===============================================================#
+#NOTE: SEPARETE, BECAUSE RESULTS WILL BE INCORRECT (S1-S2 instead of S2-S1)
 if (runMonteCarlo) {
 t1 = proc.time()
 
@@ -141,10 +142,10 @@ if (modelType == modelNames$GBM) {
 
 cat("\nCalls:\n")
 mc_calls <- optionPrices(S_T=mc_sprds,K=K,r=r,T_t=T_t,call=T)
-cat(sprintf("K = %.1f: %.6f\n",K,mc_calls))
+cat(sprintf("K = %.1f: %.6f (%.3f)\n",K,mc_calls$prices,mc_calls$se     ))
 cat("\nPuts:\n")
 mc_puts <- optionPrices(S_T=mc_sprds,K=K,r=r,T_t=T_t,call=F)
-cat(sprintf("K = %.1f: %.6f\n",K,mc_puts))
+cat(sprintf("K = %.1f: %.6f (%.3f)\n",K,mc_puts$prices,mc_puts$se))
 
 t2 = proc.time()
 cat("\nTime elapsed:\n")
