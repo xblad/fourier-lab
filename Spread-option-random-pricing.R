@@ -17,11 +17,14 @@ n_sim = 1e6
 sim_timesteps = 2000 # irrelevant in case of MonteCarloGBM3 or MonteCarloGBM4
 # model for joint characteristic function (GBM, SV etc.)
 modelType = modelNames$GBM
+# approach settings
+runFFT = T
+runMC = F
 # random variables params
 set.seed(42);
 strikeSign = 0 # negative, positive or zero?
 optType = 'Put' #sample(c("Call","Put"),1) # Call or put
-rOptNum = 10 # number of random options
+rOptNum = 30 # number of random options
 # underlyings, volatility and correlations
 underlyings = list()
 # underlyings templates (for SV and GBM)
@@ -54,6 +57,7 @@ for (j in 1:rOptNum) {
 
   K = Ks[j]
 
+  if (FALSE) { # print or not
   print(underlyings[[1]]$getParams())
   print(underlyings[[2]]$getParams())
   print(volatility$getParams())
@@ -61,6 +65,7 @@ for (j in 1:rOptNum) {
   cat("K =",K)
   cat("\nType =",optType)
   cat("\n")
+  }
 
   charFunction = getCharFunction(modelType, initConds = FALSE)
   underlying1 = underlyings[[1]]
@@ -71,7 +76,7 @@ for (j in 1:rOptNum) {
   #===============================================================#
   #               HURD ZHOU FOURIER APPROACH                      #
   #===============================================================#
-
+  if (runFFT) {
   t1 = proc.time()[3]
 
   SpreadOptionPrices$FFT[j] = getSpreadOptionPricesHurdZhou(K = K, r = r, T_t = T_t)[,optType]
@@ -79,10 +84,11 @@ for (j in 1:rOptNum) {
   t2 = proc.time()[3]
 
   timeConsum$FFT[j] = t2-t1
-
+  }
   #===============================================================#
   #               MONTE CARLO SIMULATION                          #
   #===============================================================#
+  if (runMC) {
   t1 = proc.time()[3]
 
   if (modelType == modelNames$GBM) {
@@ -100,6 +106,7 @@ for (j in 1:rOptNum) {
 
   t2 = proc.time()[3]
   timeConsum$MC[j] = t2-t1
+  }
 }
 
 cat("## TIME ##")
