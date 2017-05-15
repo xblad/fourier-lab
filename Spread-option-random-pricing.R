@@ -1,4 +1,4 @@
-#rm(list=ls())
+rm(list=ls())
 source('Spread-option-pricing-functions.R')
 ## FIXED PARAMS ##
 # time to expiry
@@ -18,12 +18,12 @@ sim_timesteps = 2000 # irrelevant in case of MonteCarloGBM3 or MonteCarloGBM4
 # model for joint characteristic function (GBM, SV etc.)
 modelType = modelNames$GBM
 # approach settings
-runFFT = T
-runMC = F
+runFFT = F
+runMC = T
 # random variables params
 set.seed(42);
-strikeSign = 0 # negative, positive or zero?
-optType = 'Put' #sample(c("Call","Put"),1) # Call or put
+strikeSign = 1 # negative, positive or zero?
+optType = c('Call','Put')[1] #sample(c("Call","Put"),1) # Call or put
 rOptNum = 30 # number of random options
 # underlyings, volatility and correlations
 underlyings = list()
@@ -43,6 +43,7 @@ SpreadOptionPrices = data.frame(FFT = seq_len(rOptNum)*NA,
   MC = seq_len(rOptNum)*NA)
 timeConsum = SpreadOptionPrices
 for (j in 1:rOptNum) {
+  progress(j,rOptNum)
   underlyings[[1]]$setSigma(sigma_1s[j]);
   underlyings[[2]]$setInitPrice(S_2_0s[j]);
   underlyings[[2]]$setSigma(sigma_2s[j]);
@@ -63,7 +64,6 @@ for (j in 1:rOptNum) {
   print(volatility$getParams())
   print(corrs$getCorrelationMatrix())
   cat("K =",K)
-  cat("\nType =",optType)
   cat("\n")
   }
 
@@ -110,4 +110,7 @@ for (j in 1:rOptNum) {
 }
 
 cat("## TIME ##")
+cat("\nType =",optType,"\n")
+cat("N =",N,"\n")
+cat("K sign:",strikeSign,"\n")
 sapply(timeConsum,mean)
