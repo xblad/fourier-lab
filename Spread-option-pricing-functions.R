@@ -17,6 +17,14 @@ progress <- function (x, max = 100, stepTime=0,totalTime=0) {
         cat('\n')
 }
 
+copyToClipboard <- function(dataFrame, col.names = T) {
+  write.table(dataFrame, file = paste("clipboard",2^15,sep="-"), sep = "\t", row.names = F, col.names = col.names)
+}
+
+copyMatrixToClipboard <- function(mat) {
+	write.table(mat, file = paste("clipboard",2^15,sep="-"), sep = "\t")
+}
+
 #===============================================================#
 #               PREPARATION FUNCTIONS                           #
 #===============================================================#
@@ -33,7 +41,7 @@ create.underlyingAsset <- function(S_0 = NA, sigma = NA, delta = NA) {
   list(
     getHash = function() return(hash),
 
-    setUnderlyingPrice = function(S_0) S_0 <<- S_0,
+    setInitPrice = function(S_0) S_0 <<- S_0,
     setSigma = function(sigma) sigma <<- sigma,
     setDividendRate = function(delta) delta <<- delta,
 
@@ -621,7 +629,7 @@ getSpreadOptionPricesHurdZhou <- function(K, r, T_t) {
     progress(kk,length(K),t_finish-t_start,t_finish-t_begin)
   }
   # zero strike handling
-  if ((all(c(-1,1,0)*zeroCloseK) %in% K)) {
+  if (all((c(-1,1,0)*zeroCloseK) %in% K)) {
     SpreadOptionPrices["0",1] = mean(SpreadOptionPrices[paste(-zeroCloseK),1],
                                  SpreadOptionPrices[paste(zeroCloseK),1])
     K = K[!K %in% (c(-1,1)*zeroCloseK)]
@@ -851,3 +859,20 @@ monteCarloGBM4 <- function(underlying1, underlying2, corrs, r, T_t) {
 
   return(sprds)
 }
+
+#===============================================================#
+#                         TESTING                               #
+#===============================================================#
+K_LimKoef = 0.5
+sigma_LimFrom = 0.01
+sigma_LimTo = 0.9
+S_0_LimFrom = 60
+S_0_LimTo = 140
+getPosStrikes = function(n, basis, LimKoef = K_LimKoef)
+  return(runif(n, 1e-3, LimKoef) * basis)
+
+getSigmas = function(n, LimFrom = sigma_LimFrom, LimTo = sigma_LimTo)
+  return(runif(n,LimFrom,LimTo))
+
+getInitPrices = function(n, LimFrom = S_0_LimFrom, LimTo = S_0_LimTo)
+  return(runif(n,LimFrom,LimTo))
