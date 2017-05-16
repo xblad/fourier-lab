@@ -727,6 +727,222 @@ monteCarloSV <- function(underlying1, underlying2, volatility, corrs, r, T_t) {
   return(sprds)
 }
 
+monteCarloSV2 <- function(underlying1, underlying2, volatility, corrs, r, T_t) {
+  dt = T_t/sim_timesteps
+  sim_timesteps = sim_timesteps + 1
+  tsteps = seq_len(sim_timesteps)
+  lsims = seq_len(n_sim)
+
+  und1 = underlying1$getParams()
+  s_1_0 = log(und1$S_0)
+  sigma_1 = und1$sigma
+  delta_1 = und1$delta
+
+  und2 = underlying2$getParams()
+  s_2_0 = log(und2$S_0)
+  sigma_2 = und2$sigma
+  delta_2 = und2$delta
+
+  vol = volatility$getParams()
+  nu_0 = vol$nu_0
+  sigma_nu = vol$sigma
+  kappa = vol$kappa
+  mu = vol$mu
+
+  W_cor = matrix(unlist(corrs$getCorrelationMatrix()), nrow = 3)
+
+  sprds = lsims*NA
+  t_begin = proc.time()[3]
+  lapply((2*lsims-1), function(ss){
+    t_start = proc.time()[3]
+    V = matrix(rep(tsteps, 6)*NA, nrow = 6,
+    dimnames = list(c("s_1", "s_2", "nu", "s_1_alt", "s_2_alt", "nu_alt")))
+    dW = matrix(rnorm(sim_timesteps*3, sd = sqrt(dt)), nrow = 3)
+    dW = t(chol(W_cor)) %*% dW
+    dimnames(dW) = list(c("dW_1","dW_2","dW_nu"))
+
+    V[,1] = c(s_1_0,s_2_0,nu_0)
+    for (ts in tsteps[-1]) {
+      V["s_1", ts] = V["s_1", ts-1] +
+        (r-delta_1-1/2*sigma_1^2*max(V["nu", ts-1],0))*dt +
+        sigma_1*sqrt(max(V["nu", ts-1],0))*dW["dW_1",ts]
+      V["s_2", ts] = V["s_2", ts-1] +
+        (r-delta_2-1/2*sigma_2^2*max(V["nu", ts-1],0))*dt +
+        sigma_2*sqrt(max(V["nu", ts-1],0))*dW["dW_2",ts]
+      V["nu", ts] = V["nu", ts-1] +
+        kappa*(mu-max(V["nu", ts-1],0))*dt +
+        sigma_nu*sqrt(max(V["nu",ts-1],0))*dW["dW_nu",ts]
+      V["s_1_alt", ts] = V["s_1_alt", ts-1] +
+        (r-delta_1-1/2*sigma_1^2*max(V["nu_alt", ts-1],0))*dt +
+        sigma_1*sqrt(max(V["nu_alt", ts-1],0))*dW["dW_1",ts]
+      V["s_2_alt", ts] = V["s_2_alt", ts-1] +
+        (r-delta_2-1/2*sigma_2^2*max(V["nu_alt", ts-1],0))*dt +
+        sigma_2*sqrt(max(V["nu_alt", ts-1],0))*dW["dW_2",ts]
+      V["nu_alt", ts] = V["nu_alt", ts-1] +
+        kappa*(mu-max(V["nu_alt", ts-1],0))*dt +
+        sigma_nu*sqrt(max(V["nu_alt",ts-1],0))*dW["dW_nu",ts]
+    }
+    sprds[ss] <<- exp(V["s_1", sim_timesteps]) - exp(V["s_2", sim_timesteps])
+    sprds[ss+1] <<- exp(V["s_1_alt", sim_timesteps]) -
+                    exp(V["s_2_alt", sim_timesteps])
+
+    t_finish = proc.time()[3]
+    progress((ss+1)/2, n_sim, t_finish-t_start, t_finish-t_begin)
+  })
+  return(sprds)
+}
+
+monteCarloSV3 <- function(underlying1, underlying2, volatility, corrs, r, T_t) {
+  dt = T_t/sim_timesteps
+  sim_timesteps = sim_timesteps + 1
+  tsteps = seq_len(sim_timesteps)
+  lsims = seq_len(n_sim)
+
+  und1 = underlying1$getParams()
+  s_1_0 = log(und1$S_0)
+  sigma_1 = und1$sigma
+  rmdelta_1 = r - und1$delta
+
+  und2 = underlying2$getParams()
+  s_2_0 = log(und2$S_0)
+  sigma_2 = und2$sigma
+  rmdelta_2 = r - und2$delta
+
+  vol = volatility$getParams()
+  nu_0 = vol$nu_0
+  sigma_nu = vol$sigma
+  kappa = vol$kappa
+  mu = vol$mu
+
+  W_cor = matrix(unlist(corrs$getCorrelationMatrix()), nrow = 3)
+  tcholW_cor = t(chol(W_cor))
+  V_empty = matrix(rep(tsteps, 6)*NA, nrow = 6,
+    dimnames = list(c("s_1", "s_2", "nu", "s_1_alt", "s_2_alt", "nu_alt")))
+  V_empty[,1] = c(s_1_0,s_2_0,nu_0)
+
+  sprds = lsims*NA
+  t_begin = proc.time()[3]
+
+  lapply((2*lsims-1), function(ss){
+    t_start = proc.time()[3]
+    V = V_empty
+
+    dW = matrix(rnorm(sim_timesteps*3, sd = sqrt(dt)), nrow = 3)
+    dW = tcholW_cor %*% dW
+    dimnames(dW) = list(c("dW_1","dW_2","dW_nu"))
+
+    for (ts in tsteps[-1]) {
+      V_nu_p = max(V["nu", ts-1],0)
+      V_nu_alt_p = max(V["nu_alt", ts-1],0)
+      sV_nu_p = sqrt(V_nu_p)
+      sV_nu_alt_p = sqrt(V_nu_alt_p)
+
+      V["s_1", ts] = V["s_1", ts-1] + (rmdelta_1-1/2*sigma_1^2*V_nu_p)*dt +
+        sigma_1*sV_nu_p*dW["dW_1",ts]
+      V["s_2", ts] = V["s_2", ts-1] + (rmdelta_2-1/2*sigma_2^2*V_nu_p)*dt +
+        sigma_2*sV_nu_p*dW["dW_2",ts]
+      V["nu", ts] = V["nu", ts-1] + kappa*(mu-V_nu_p)*dt +
+        sigma_nu*sV_nu_p*dW["dW_nu",ts]
+      V["s_1_alt", ts] = V["s_1_alt", ts-1] +
+        (rmdelta_1-1/2*sigma_1^2*V_nu_alt_p)*dt +
+        sigma_1*sV_nu_alt_p*dW["dW_1",ts]
+      V["s_2_alt", ts] = V["s_2_alt", ts-1] +
+        (rmdelta_2-1/2*sigma_2^2*V_nu_alt_p)*dt +
+        sigma_2*sV_nu_alt_p*dW["dW_2",ts]
+      V["nu_alt", ts] = V["nu_alt", ts-1] +
+        kappa*(mu-V_nu_alt_p)*dt +
+        sigma_nu*sV_nu_alt_p*dW["dW_nu",ts]
+    }
+    sprds[ss] <<- exp(V["s_1", sim_timesteps]) - exp(V["s_2", sim_timesteps])
+    sprds[ss+1] <<- exp(V["s_1_alt", sim_timesteps]) -
+                    exp(V["s_2_alt", sim_timesteps])
+
+    t_finish = proc.time()[3]
+    progress((ss+1)/2, n_sim, t_finish-t_start, t_finish-t_begin)
+  })
+  return(sprds)
+}
+
+monteCarloSV4 <- function(underlying1, underlying2, volatility, corrs, r, T_t) {
+  dt = T_t/sim_timesteps
+  sim_timesteps = sim_timesteps + 1
+  tsteps = seq_len(sim_timesteps)
+  lsims = seq_len(n_sim)
+
+  und1 = underlying1$getParams()
+  s_1_0 = log(und1$S_0)
+  sigma_1 = und1$sigma
+  rmdelta_1 = r - und1$delta
+
+  und2 = underlying2$getParams()
+  s_2_0 = log(und2$S_0)
+  sigma_2 = und2$sigma
+  rmdelta_2 = r - und2$delta
+
+  vol = volatility$getParams()
+  nu_0 = vol$nu_0
+  sigma_nu = vol$sigma
+  kappa = vol$kappa
+  mu = vol$mu
+
+  W_cor = matrix(unlist(corrs$getCorrelationMatrix()), nrow = 3)
+  tcholW_cor = t(chol(W_cor))
+  V_empty = matrix(rep(tsteps, 6)*NA, nrow = 6,
+    dimnames = list(c("s_1", "s_2", "nu", "s_1_alt", "s_2_alt", "nu_alt")))
+  V_empty[,1] = c(s_1_0,s_2_0,nu_0)
+
+  s_1_empty = V_empty["s_1",]
+  s_2_empty = V_empty["s_2",]
+  nu_empty = V_empty["nu",]
+  s_1_alt_empty = V_empty["s_1_alt",]
+  s_2_alt_empty = V_empty["s_2_alt",]
+  nu_alt_empty = V_empty["nu_alt",]
+
+  sprds = lsims*NA
+  t_begin = proc.time()[3]
+
+  for (ss in (2*lsims-1)) {
+    t_start = proc.time()[3]
+    s_1 = s_1_empty; s_2 = s_2_empty
+    nu = nu_empty; nu_alt = nu_alt_empty
+    s_1_alt = s_1_alt_empty; s_2_alt = s_2_alt_empty
+
+    dW = matrix(rnorm(sim_timesteps*3, sd = sqrt(dt)), nrow = 3)
+    dW = tcholW_cor %*% dW
+    dimnames(dW) = list(c("dW_1","dW_2","dW_nu"))
+
+    for (ts in tsteps[-1]) {
+      nu_p = max(nu[ts-1],0)
+      nu_alt_p = max(nu_alt[ts-1],0)
+      sqrt_nu_p = sqrt(nu_p)
+      sqrt_nu_alt_p = sqrt(nu_alt_p)
+
+      s_1[ts] = s_1[ts-1] + (rmdelta_1-1/2*sigma_1^2*nu_p)*dt +
+        sigma_1*sqrt_nu_p*dW["dW_1",ts]
+      s_2[ts] = s_2[ts-1] + (rmdelta_2-1/2*sigma_2^2*nu_p)*dt +
+        sigma_2*sqrt_nu_p*dW["dW_2",ts]
+      nu[ts] = nu[ts-1] + kappa*(mu-nu_p)*dt +
+        sigma_nu*sqrt_nu_p*dW["dW_nu",ts]
+      s_1_alt[ts] = s_1_alt[ts-1] +
+        (rmdelta_1-1/2*sigma_1^2*nu_alt_p)*dt +
+        sigma_1*sqrt_nu_alt_p*dW["dW_1",ts]
+      s_2_alt[ts] = s_2_alt[ts-1] +
+        (rmdelta_2-1/2*sigma_2^2*nu_alt_p)*dt +
+        sigma_2*sqrt_nu_alt_p*dW["dW_2",ts]
+      nu_alt[ts] = nu_alt[ts-1] +
+        kappa*(mu-nu_alt_p)*dt +
+        sigma_nu*sqrt_nu_alt_p*dW["dW_nu",ts]
+    }
+    sprds[ss] <- exp(s_1[sim_timesteps]) - exp(s_2[sim_timesteps])
+    sprds[ss+1] <- exp(s_1_alt[sim_timesteps]) -
+                    exp(s_2_alt[sim_timesteps])
+
+    t_finish = proc.time()[3]
+    progress((ss+1)/2, n_sim, t_finish-t_start, t_finish-t_begin)
+  }
+  return(sprds)
+}
+
 monteCarloGBM <- function(underlying1, underlying2, corrs, r, T_t,
   sim_timesteps) {
   dt = T_t/sim_timesteps
