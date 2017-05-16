@@ -30,10 +30,10 @@ r = 0.1
 # the strikes range (from, to, step)
 K = seq(-40,40,1)
 # model for joint characteristic function (GBM, SV etc.)
-modelType = modelNames$GBM
+modelType = modelNames$SV
 # Monte carlo params
-n_sim = 10^6
-sim_timesteps = 2000 # irrelevant in case of MonteCarloGBM3 or MonteCarloGBM4
+n_sim = 10^4
+sim_timesteps = 1 # irrelevant in case of MonteCarloGBM3 or MonteCarloGBM4
 ## END ~~ PARAMS SETTINGS ~~ END ##
 
 if (modelType == modelNames$SV) {
@@ -53,8 +53,12 @@ if (modelType == modelNames$GBM) {
   mc_sprds <- monteCarloGBM4(underlying1 = underlying1, underlying2 = underlying2,
     corrs = corrs, r = r, T_t = T_t)#,sim_timesteps = sim_timesteps)
 } else if (modelType == modelNames$SV) {
-  mc_sprds <- monteCarloSV(underlying1 = underlying1, underlying2 = underlying2,
+  mc_sprds = NULL
+  for (ii in 1:100) {
+  mc_sprds_temp <- monteCarloSV4(underlying1 = underlying1, underlying2 = underlying2,
     corrs = corrs, volatility = volatility, r = r, T_t = T_t)
+  mc_sprds = cbind(mc_sprds, mc_sprds_temp)
+  }
 } else {
   stop("Unknown modelType!")
 }
