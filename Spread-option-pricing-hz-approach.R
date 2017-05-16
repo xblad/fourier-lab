@@ -36,7 +36,7 @@ alpha_2 = 1
 # interest rate
 r = 0.1
 # the strikes range (from, to, step)
-K = seq(-40,40,1)
+K = c(-10:-5,seq(-4.5,4.5,0.5),5:10)
 # model for joint characteristic function (GBM, SV etc.)
 modelType = modelNames$SV
 ## END ~~ PARAMS SETTINGS ~~ END ##
