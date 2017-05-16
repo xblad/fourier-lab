@@ -37,17 +37,10 @@ r = 0.1
 # upper bound params epsilon
 epsilon = 1e-1
 # the strikes range (from, to, step)
-K = seq(-40,40,1)
+K = seq(1,4,0.1)
 # model for joint characteristic function (GBM, SV etc.)
 modelType = modelNames$SV
-# Monte carlo params
-n_sim = 10^1
-sim_timesteps = 2000 # irrelevant in case of MonteCarloGBM3 or MonteCarloGBM4
 ## END ~~ PARAMS SETTINGS ~~ END ##
-
-# params settings
-runFastFourier = F
-runMonteCarlo = T
 
 # NOTE: same templates, but reversed order
 if (modelType == modelNames$SV) {
@@ -67,7 +60,6 @@ setLambdasAndDeltas(K = 1, u_minimum = u_min,
 #===============================================================#
 #               BASIC FOURIER APPROACH                          #
 #===============================================================#
-if (runFastFourier) {
 t1 = proc.time()
 inverse = F
 # 1. preparation of input
@@ -122,32 +114,3 @@ times[times$N == N,"time"] = unname(t2[3] - t1[3])
 cat("\nTime elapsed:\n")
 print(times)
 cat("\n\n")
-}
-#===============================================================#
-#               MONTE CARLO SIMULATION                          #
-#===============================================================#
-#NOTE: SEPARETE, BECAUSE RESULTS WILL BE INCORRECT (S1-S2 instead of S2-S1)
-if (runMonteCarlo) {
-t1 = proc.time()
-
-if (modelType == modelNames$GBM) {
-  mc_sprds <- monteCarloGBM4(underlying1 = underlying1, underlying2 = underlying2,
-    corrs = corrs, r = r, T_t = T_t)#,sim_timesteps = sim_timesteps)
-} else if (modelType == modelNames$SV) {
-  mc_sprds <- monteCarloSV(underlying1 = underlying1, underlying2 = underlying2,
-    corrs = corrs, volatility = volatility, r = r, T_t = T_t)
-} else {
-  stop("Unknown modelType!")
-}
-
-cat("\nCalls:\n")
-mc_calls <- optionPrices(S_T=mc_sprds,K=K,r=r,T_t=T_t,call=T)
-cat(sprintf("K = %.1f: %.6f (%.3f)\n",K,mc_calls$prices,mc_calls$se     ))
-cat("\nPuts:\n")
-mc_puts <- optionPrices(S_T=mc_sprds,K=K,r=r,T_t=T_t,call=F)
-cat(sprintf("K = %.1f: %.6f (%.3f)\n",K,mc_puts$prices,mc_puts$se))
-
-t2 = proc.time()
-cat("\nTime elapsed:\n")
-cat(unname(t2[3] - t1[3]))
-}
