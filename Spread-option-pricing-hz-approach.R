@@ -37,8 +37,9 @@ alpha_2 = 1
 r = 0.1
 # the strikes range (from, to, step)
 K = c(-10:-5,seq(-4.5,4.5,0.5),5:10)
+infinitesimalStrike = 1e-3 # approximation of K = 0
 # model for joint characteristic function (GBM, SV etc.)
-modelType = modelNames$SV
+modelType = modelNames$GBM
 ## END ~~ PARAMS SETTINGS ~~ END ##
 
 #===============================================================#
@@ -59,7 +60,8 @@ if (modelType == modelNames$SV) {
 
 t1 = proc.time()
 
-SpreadOptionPrices = getSpreadOptionPricesHurdZhou(K = K, r = r, T_t = T_t)
+SpreadOptionPrices = getSpreadOptionPricesHurdZhou(K = K, r = r, T_t = T_t,
+                                                   smallStrike = infinitesimalStrike)
 
 t2 = proc.time()
 
@@ -79,3 +81,4 @@ times = if ("times" %in% ls()) {
 times[times$N == N,"time"] = unname(t2[3] - t1[3])
 cat("\nTime elapsed:\n")
 print(times)
+#SpreadOptionPrices %>% copyToClipboard(col.names = F)

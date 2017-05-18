@@ -575,12 +575,12 @@ SprHurdZhou <- function(K, fourierOutputHurdZhou, modelType = modelNames$SV,
   ))
 }
 
-getSpreadOptionPricesHurdZhou <- function(K, r, T_t) {
+getSpreadOptionPricesHurdZhou <- function(K, r, T_t, smallStrike = 1e-3) {
   # We are going to calculate value for K = 0 as average of value for
   # extremely small negative strike and extremely small positive strike
   # i.e. (V[0-] + V[0+])/ 2, where V[K] stands for value of option with given
   # strike K
-  zeroCloseK = 1e-3 # extremely small K instead of zero
+  zeroCloseK = smallStrike # extremely small K instead of zero
   if (0 %in% K) K = c(K,c(-1,1)*zeroCloseK)
 
   SpreadOptionPrices = matrix(rep(K,2) * NA,ncol = 2,
