@@ -13,7 +13,9 @@ alpha_2 = 1
 # interest rate
 r = 0.1
 # model for joint characteristic function (GBM, SV etc.)
-modelType = modelNames$GBM
+modelType = modelNames$SV
+# default strike
+K = 5
 # random variables params
 optType = c('Call','Put')[1] # Call or put
 # underlyings, volatility and correlations
@@ -21,6 +23,13 @@ underlyings = list()
 # underlyings templates (for SV and GBM)
 underlyings[[1]] <- create.underlyingAsset(S_0 = 100, sigma = 1.0, delta = 0.05)
 underlyings[[2]] <- create.underlyingAsset(S_0 = 96, sigma = 0.5, delta = 0.05)
+
+
+charFunction = getCharFunction(modelType, initConds = FALSE)
+if (modelType == modelNames$GBM) {
+        underlyings[[1]]$setSigma(0.2);
+        underlyings[[2]]$setSigma(0.1);
+}
 
 volatility <- create.stochasticVolatility(nu_0 = 0.04,
                                           sigma = 0.05, kappa = 1.0, mu = 0.04)
@@ -33,22 +42,29 @@ corrs$setCorrelation(underlyings[[2]], volatility, 0.25)
 ## END ~~ FIXED PARAMS ~~ END ##
 
 # fine of interval
-num = 15
+num = 21
 
 # variables
 S_2_0s = seq(60,140,length.out = num);
 Ks = seq(-40,40,length.out = num)
-params = expand.grid(Ks = Ks, S_2_0s = S_2_0s)
-SpreadOptionPrices = data.frame(S_2_0s = params$S_2_0s,
-                                Ks = params$Ks,
+Ts = seq(0,3,length.out = num)
+rhos = seq(-1,1,length.out = num)
+mus = seq(0,1,length.out = num)
+sigma_2s = seq(0,0.2,length.out = num)
+params = expand.grid(sigma_2s = sigma_2s, mus = mus)#Ks = Ks, rhos = rhos)#Ts = Ts)#S_2_0s = S_2_0s)#
+SpreadOptionPrices = data.frame(sigma_2s = params$sigma_2s,#rhos = params$rhos,#Ts = params$Ts,#S_2_0s = params$S_2_0s,#
+                                mus = params$mus,#Ks = params$Ks,
                                 FFT_c = NA,
                                 FFT_p = NA)
 timeConsum = SpreadOptionPrices
 for (j in 1:nrow(params)) {
         progress(j,nrow(params))
-        underlyings[[1]]$setInitPrice(params$S_2_0s[j]);
-        
-        K = params$Ks[j]
+        #underlyings[[2]]$setInitPrice(params$S_2_0s[j]);
+        #K = params$Ks[j]
+        #T_t = params$Ts[j]
+        #corrs$setCorrelation(underlyings[[1]], underlyings[[2]], params$rhos[j])
+        volatility$setMu(params$mus[j])
+        underlyings[[2]]$setSigma(params$sigma_2s[j]);
         
         if (F) { # print or not
                 print(underlyings[[1]]$getParams())
@@ -59,11 +75,6 @@ for (j in 1:nrow(params)) {
                 cat("\n")
         }
         
-        charFunction = getCharFunction(modelType, initConds = FALSE)
-        if (modelType == modelNames$GBM) {
-                underlyings[[1]]$setSigma(0.2);
-                underlyings[[2]]$setSigma(0.1);
-        }
         underlying1 = underlyings[[1]]
         underlying2 = underlyings[[2]]
         underlying1.negStrike = underlyings[[2]]
