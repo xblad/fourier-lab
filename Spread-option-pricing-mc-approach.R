@@ -53,12 +53,8 @@ if (modelType == modelNames$GBM) {
   mc_sprds <- monteCarloGBM4(underlying1 = underlying1, underlying2 = underlying2,
     corrs = corrs, r = r, T_t = T_t)#,sim_timesteps = sim_timesteps)
 } else if (modelType == modelNames$SV) {
-  mc_sprds = NULL
-  for (ii in 1:100) {
-  mc_sprds_temp <- monteCarloSV4(underlying1 = underlying1, underlying2 = underlying2,
+  mc_sprds <- monteCarloSV(underlying1 = underlying1, underlying2 = underlying2,
     corrs = corrs, volatility = volatility, r = r, T_t = T_t)
-  mc_sprds = cbind(mc_sprds, mc_sprds_temp)
-  }
 } else {
   stop("Unknown modelType!")
 }

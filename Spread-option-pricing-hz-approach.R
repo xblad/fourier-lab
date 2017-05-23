@@ -66,7 +66,6 @@ SpreadOptionPrices = getSpreadOptionPricesHurdZhou(K = K, r = r, T_t = T_t,
 t2 = proc.time()
 
 print(SpreadOptionPrices)
-#cat(sprintf("\n%.2f: %.4f",K, SpreadOptionPrices))
 cat("\n")
 
 matplot(SpreadOptionPrices,type=c("l"),pch=1,x = K,ylab = "Spread option value")

@@ -16,8 +16,6 @@ r = 0.1
 modelType = modelNames$SV
 # default strike
 K = 5
-# random variables params
-optType = c('Call','Put')[1] # Call or put
 # underlyings, volatility and correlations
 underlyings = list()
 # underlyings templates (for SV and GBM)
@@ -51,20 +49,26 @@ Ts = seq(0,3,length.out = num)
 rhos = seq(-1,1,length.out = num)
 mus = seq(0,1,length.out = num)
 sigma_2s = seq(0,1,length.out = num)
-params = expand.grid(sigma_2s = sigma_2s, mus = mus)#Ks = Ks, rhos = rhos)#Ts = Ts)#S_2_0s = S_2_0s)#
-SpreadOptionPrices = data.frame(sigma_2s = params$sigma_2s,#rhos = params$rhos,#Ts = params$Ts,#S_2_0s = params$S_2_0s,#
-                                mus = params$mus,#Ks = params$Ks,
+rho_1s = seq(-1,1,length.out = num)
+rho_2s = seq(-1,1,length.out = num)
+nu_0s = seq(0,1,length.out = num)
+params = expand.grid(Ks = Ks, nu_0s = nu_0s)#, rhos = rhos)#rho_1s = rho_1s, rho_2s = rho_2s)#sigma_2s = sigma_2s, mus = mus)#Ts = Ts)#S_2_0s = S_2_0s)#
+SpreadOptionPrices = data.frame(nu_0s = params$nu_0s,#rho_1s = params$rho_1s,#sigma_2s = params$sigma_2s,#rhos = params$rhos,#Ts = params$Ts,#S_2_0s = params$S_2_0s,#
+                                Ks = params$Ks,#rho_2s = params$rho_2s,#mus = params$mus,#
                                 FFT_c = NA,
                                 FFT_p = NA)
 timeConsum = SpreadOptionPrices
 for (j in 1:nrow(params)) {
         progress(j,nrow(params))
         #underlyings[[2]]$setInitPrice(params$S_2_0s[j]);
-        #K = params$Ks[j]
+        K = params$Ks[j]
         #T_t = params$Ts[j]
         #corrs$setCorrelation(underlyings[[1]], underlyings[[2]], params$rhos[j])
-        volatility$setMu(params$mus[j])
-        underlyings[[2]]$setSigma(params$sigma_2s[j]);
+        #volatility$setMu(params$mus[j])
+        #underlyings[[2]]$setSigma(params$sigma_2s[j]);
+        #corrs$setCorrelation(underlyings[[1]], volatility, params$rho_1s[j])
+        #corrs$setCorrelation(underlyings[[2]], volatility, params$rho_2s[j])
+        volatility$setInitVolatility(params$nu_0s[j])
         
         if (F) { # print or not
                 print(underlyings[[1]]$getParams())
